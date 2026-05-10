@@ -51,5 +51,6 @@ app.MapScalarApiReference(opts =>
 
 app.UseAuthorization();
 app.MapControllers();
+app.MapPrometheusScrapingEndpoint();
 
 app.Run();

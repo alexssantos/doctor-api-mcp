@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcpserver
+  namespace: mcp-apis
+  labels:
+    app: mcpserver
+spec:
+  selector:
+    app: mcpserver
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000

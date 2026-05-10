@@ -63,8 +63,13 @@ docker build \
   -t produtoapi:latest \
   "${REPO_ROOT}"
 
+docker build \
+  -f "${REPO_ROOT}/src/Services/McpServer/Dockerfile" \
+  -t mcpserver:latest \
+  "${REPO_ROOT}"
+
 echo "📦 Loading images into k3d cluster..."
-k3d image import precoapi:latest produtoapi:latest --cluster "${CLUSTER_NAME}"
+k3d image import precoapi:latest produtoapi:latest mcpserver:latest --cluster "${CLUSTER_NAME}"
 
 # ─── Apply manifests (ordered) ─────────────────────────────────────────────────
 echo "📋 Applying Kubernetes manifests..."
@@ -73,6 +78,11 @@ kubectl apply -f "${REPO_ROOT}/k8s/namespace.yaml"
 kubectl apply -f "${REPO_ROOT}/k8s/postgres-produto/"
 kubectl apply -f "${REPO_ROOT}/k8s/postgres-preco/"
 kubectl apply -f "${REPO_ROOT}/k8s/jaeger/"
+kubectl apply -f "${REPO_ROOT}/k8s/prometheus/"
+kubectl apply -f "${REPO_ROOT}/k8s/loki/"
+kubectl apply -f "${REPO_ROOT}/k8s/promtail/"
+kubectl apply -f "${REPO_ROOT}/k8s/grafana/"
+kubectl apply -f "${REPO_ROOT}/k8s/mcpserver/"
 kubectl apply -f "${REPO_ROOT}/k8s/precoapi/"
 kubectl apply -f "${REPO_ROOT}/k8s/produtoapi/"
 
@@ -87,6 +97,10 @@ echo "⏳ Waiting for rollouts..."
 kubectl rollout status statefulset/postgres-produto -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status statefulset/postgres-preco   -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status deployment/jaeger            -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/prometheus        -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/loki              -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/grafana           -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/mcpserver         -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status deployment/precoapi          -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status deployment/produtoapi        -n "${NAMESPACE}" --timeout=120s
 
@@ -104,5 +118,8 @@ cat <<EOF
    ProdutoAPI → http://localhost:5002/api/products
    ProdutoAPI → http://localhost:5002/scalar/v1
    Jaeger     → http://localhost:16686
+   Prometheus → http://localhost:9090
+   Grafana    → http://localhost:3000  (admin/admin)
+   MCP Server → http://localhost:4000/sse  (SSE transport)
 
 EOF

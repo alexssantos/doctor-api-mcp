@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("McpApis.ProdutoAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ce2f7e40cf02dfde65e2d2b5d9cb24e98fb9af2d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+612ebcd46aa0de7c58cd2b6b08a67c2842cc0165")]
 [assembly: System.Reflection.AssemblyProductAttribute("McpApis.ProdutoAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("McpApis.ProdutoAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "mcp-apis": {
+      "url": "http://localhost:4000/",
+      "type": "streamable-http"
+    }
+  }
+}

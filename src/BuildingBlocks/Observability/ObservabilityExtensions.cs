@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -17,6 +18,8 @@ public static class ObservabilityExtensions
         var captureBody = configuration.GetValue<bool>("Otel:CaptureBody");
 
         services.AddOpenApiTelemetry(serviceName, otlpEndpoint);
+
+        services.AddMetricsTelemetry(serviceName);
 
         if (captureBody)
         {
@@ -56,6 +59,24 @@ public static class ObservabilityExtensions
                     {
                         opts.Endpoint = new Uri(otlpEndpoint);
                     });
+            });
+
+        return services;
+    }
+
+    private static IServiceCollection AddMetricsTelemetry(
+        this IServiceCollection services,
+        string serviceName)
+    {
+        services.AddOpenTelemetry()
+            .WithMetrics(metrics =>
+            {
+                metrics
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddRuntimeInstrumentation()
+                    .AddPrometheusExporter();
             });
 
         return services;

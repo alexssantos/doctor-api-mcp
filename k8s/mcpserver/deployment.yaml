@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcpserver
+  namespace: mcp-apis
+  labels:
+    app: mcpserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcpserver
+  template:
+    metadata:
+      labels:
+        app: mcpserver
+    spec:
+      serviceAccountName: mcp-reader
+      containers:
+        - name: mcpserver
+          image: mcpserver:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: mcpserver-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 15

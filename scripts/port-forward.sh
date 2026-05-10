@@ -20,6 +20,9 @@ echo "   PrecoAPI   → http://localhost:5001/scalar/v1"
 echo "   ProdutoAPI → http://localhost:5002/api/products"
 echo "   ProdutoAPI → http://localhost:5002/scalar/v1"
 echo "   Jaeger     → http://localhost:16686"
+echo "   Prometheus → http://localhost:9090"
+echo "   Grafana    → http://localhost:3000  (admin/admin)"
+echo "   MCP Server → http://localhost:4000/sse  (SSE transport)"
 echo ""
 
 # Forward all in background, track PIDs
@@ -29,8 +32,14 @@ kubectl port-forward -n "${NAMESPACE}" svc/produtoapi 5002:80 &
 PF2=$!
 kubectl port-forward -n "${NAMESPACE}" svc/jaeger     16686:16686 &
 PF3=$!
+kubectl port-forward -n "${NAMESPACE}" svc/prometheus 9090:9090 &
+PF4=$!
+kubectl port-forward -n "${NAMESPACE}" svc/grafana    3000:3000 &
+PF5=$!
+kubectl port-forward -n "${NAMESPACE}" svc/mcpserver  4000:4000 &
+PF6=$!
 
 # Kill all forwards on Ctrl+C
-trap "kill $PF1 $PF2 $PF3 2>/dev/null; echo 'Port-forwards stopped.'" INT TERM
+trap "kill $PF1 $PF2 $PF3 $PF4 $PF5 $PF6 2>/dev/null; echo 'Port-forwards stopped.'" INT TERM
 
-wait $PF1 $PF2 $PF3
+wait $PF1 $PF2 $PF3 $PF4 $PF5 $PF6

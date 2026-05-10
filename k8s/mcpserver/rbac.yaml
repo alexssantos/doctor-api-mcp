@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-reader
+  namespace: mcp-apis
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mcp-reader-role
+  namespace: mcp-apis
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mcp-reader-binding
+  namespace: mcp-apis
+subjects:
+  - kind: ServiceAccount
+    name: mcp-reader
+    namespace: mcp-apis
+roleRef:
+  kind: Role
+  name: mcp-reader-role
+  apiGroup: rbac.authorization.k8s.io

@@ -86,7 +86,15 @@ echo "🔭 Installing Jaeger..."
 kubectl apply -f "${REPO_ROOT}/k8s/jaeger/deployment.yaml"
 kubectl apply -f "${REPO_ROOT}/k8s/jaeger/service.yaml"
 kubectl rollout status deployment/jaeger -n "${NAMESPACE}" --timeout=120s
-
+# ─── Observability stack (Prometheus + Loki + Promtail + Grafana) ────────
+echo "📊 Installing observability stack..."
+kubectl apply -f "${REPO_ROOT}/k8s/prometheus/"
+kubectl apply -f "${REPO_ROOT}/k8s/loki/"
+kubectl apply -f "${REPO_ROOT}/k8s/promtail/"
+kubectl apply -f "${REPO_ROOT}/k8s/grafana/"
+kubectl rollout status deployment/prometheus -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/loki       -n "${NAMESPACE}" --timeout=120s
+kubectl rollout status deployment/grafana    -n "${NAMESPACE}" --timeout=120s
 # ─── Build + load Docker images ────────────────────────────────────────────────
 echo "🐳 Building Docker images (tag: ${IMAGE_TAG})..."
 
@@ -100,8 +108,13 @@ docker build \
   -t "produtoapi:${IMAGE_TAG}" \
   "${REPO_ROOT}"
 
+docker build \
+  -f "${REPO_ROOT}/src/Services/McpServer/Dockerfile" \
+  -t "mcpserver:${IMAGE_TAG}" \
+  "${REPO_ROOT}"
+
 echo "📦 Loading images into k3d cluster..."
-k3d image import "precoapi:${IMAGE_TAG}" "produtoapi:${IMAGE_TAG}" --cluster "${CLUSTER_NAME}"
+k3d image import "precoapi:${IMAGE_TAG}" "produtoapi:${IMAGE_TAG}" "mcpserver:${IMAGE_TAG}" --cluster "${CLUSTER_NAME}"
 
 # ─── Helm install: PrecoAPI ────────────────────────────────────────────────────
 echo "⚙️  Installing PrecoAPI Helm chart..."
@@ -119,6 +132,13 @@ helm upgrade --install produtoapi "${REPO_ROOT}/helm/produtoapi" \
   --set image.tag="${IMAGE_TAG}" \
   --set db.host="${POSTGRES_PRODUTO_HOST}" \
   --set otel.captureBody="${CAPTURE_BODY}" \
+  --wait --timeout 120s
+
+# ─── Helm install: MCP Server ──────────────────────────────────────────────────
+echo "⚙️  Installing MCP Server Helm chart..."
+helm upgrade --install mcpserver "${REPO_ROOT}/helm/mcpserver" \
+  --namespace "${NAMESPACE}" \
+  --set image.tag="${IMAGE_TAG}" \
   --wait --timeout 120s
 
 # ─── Status ────────────────────────────────────────────────────────────────────
@@ -140,6 +160,9 @@ cat <<EOF
    ProdutoAPI → http://localhost:5002/api/products
    ProdutoAPI → http://localhost:5002/scalar/v1
    Jaeger     → http://localhost:16686
+   Prometheus → http://localhost:9090
+   Grafana    → http://localhost:3000  (admin/admin)
+   MCP Server → http://localhost:4000/sse  (SSE transport)
 
 🔄 To upgrade (e.g. after code change):
    bash scripts/deploy-helm.sh --image-tag v1.1.0
