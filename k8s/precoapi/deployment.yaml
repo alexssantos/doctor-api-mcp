@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: precoapi
+  namespace: mcp-apis
+  labels:
+    app: precoapi
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: precoapi
+  template:
+    metadata:
+      labels:
+        app: precoapi
+    spec:
+      containers:
+        - name: precoapi
+          image: precoapi:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: precoapi-config
+            - secretRef:
+                name: precoapi-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /scalar/v1
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /scalar/v1
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15

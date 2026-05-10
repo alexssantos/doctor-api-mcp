@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/BuildingBlocks/" />
+  <Folder Name="/BuildingBlocks/Http/">
+    <Project Path="BuildingBlocks/Http/McpApis.BuildingBlocks.Http.csproj" />
+  </Folder>
+  <Folder Name="/BuildingBlocks/Observability/">
+    <Project Path="BuildingBlocks/Observability/McpApis.BuildingBlocks.Observability.csproj" />
+  </Folder>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/PrecoAPI/">
+    <Project Path="Services/PrecoAPI/McpApis.PrecoAPI.csproj" />
+  </Folder>
+  <Folder Name="/Services/ProdutoAPI/">
+    <Project Path="Services/ProdutoAPI/McpApis.ProdutoAPI.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,6 @@
+# .dockerignore applied from repo root
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+**/TestResults/

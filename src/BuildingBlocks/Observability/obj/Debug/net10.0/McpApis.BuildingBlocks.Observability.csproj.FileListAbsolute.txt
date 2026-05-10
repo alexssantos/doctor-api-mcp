@@ -1,0 +1,12 @@
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.csproj.AssemblyReference.cache
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.GeneratedMSBuildEditorConfig.editorconfig
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.AssemblyInfoInputs.cache
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.AssemblyInfo.cs
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.csproj.CoreCompileInputs.cache
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\bin\Debug\net10.0\McpApis.BuildingBlocks.Observability.deps.json
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\bin\Debug\net10.0\McpApis.BuildingBlocks.Observability.dll
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\bin\Debug\net10.0\McpApis.BuildingBlocks.Observability.pdb
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.dll
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\refint\McpApis.BuildingBlocks.Observability.dll
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\McpApis.BuildingBlocks.Observability.pdb
+C:\dev\repos\projetos\mcp-apis\src\BuildingBlocks\Observability\obj\Debug\net10.0\ref\McpApis.BuildingBlocks.Observability.dll

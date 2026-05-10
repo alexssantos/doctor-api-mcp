@@ -1,0 +1,47 @@
+replicaCount: 2
+
+image:
+  repository: precoapi
+  tag: latest
+  pullPolicy: Never
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: precoapi.local
+  annotations: {}
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+db:
+  host: postgres-preco
+  port: 5432
+  name: preco_db
+  user: postgres
+  # Override via --set db.password=<value> or a values-override file
+  password: postgres
+
+otel:
+  endpoint: http://jaeger:4317
+  captureBody: "false"
+
+probes:
+  readiness:
+    path: /scalar/v1
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  liveness:
+    path: /scalar/v1
+    initialDelaySeconds: 30
+    periodSeconds: 15

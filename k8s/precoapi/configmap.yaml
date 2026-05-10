@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: precoapi-config
+  namespace: mcp-apis
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_URLS: http://+:8080
+  Otel__Endpoint: http://jaeger:4317
+  Otel__CaptureBody: "false"
