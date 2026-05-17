@@ -162,6 +162,29 @@ Para usar:
 2. O Copilot detecta automaticamente o `mcp.json`
 3. As 7 tools ficam disponíveis no chat do Copilot
 
+#### Por que `streamable-http`?
+
+O `type: "streamable-http"` define o **transporte MCP Streamable HTTP** (especificação `2025-03-26`), que é o transporte padrão habilitado pelo `.WithHttpTransport()` no `ModelContextProtocol.AspNetCore 1.3.0`.
+
+**Como funciona:**
+
+| Etapa | Detalhe |
+|---|---|
+| Cliente envia | `POST /` com payload JSON-RPC e `Accept: application/json, text/event-stream` |
+| Servidor responde | `application/json` para respostas simples, ou `text/event-stream` (SSE) para streaming |
+| Estado de sessão | Cabeçalho `Mcp-Session-Id` mantém contexto entre requests |
+| Endpoint único | Tudo em `POST /` — sem endpoint separado para SSE ou mensagens |
+
+**Por que este projeto usa Streamable HTTP e não os outros transportes:**
+
+| Transporte | Motivo para não usar |
+|---|---|
+| `stdio` | Exige processo filho local; inviável em container Kubernetes |
+| `http+sse` (spec antiga) | Dois endpoints separados (GET SSE + POST); depreciado na spec 2025-03-26 |
+| `streamable-http` ✅ | HTTP nativo, funciona atrás de load balancer, suporta respostas longas via streaming, compatível com VS Code Copilot e Claude Desktop |
+
+O streaming é relevante para tools como `trace_route` e `find_dependencies`, que consultam o Jaeger e podem retornar volumes maiores de dados sem causar timeout no cliente.
+
 ### Claude Desktop
 
 Adicione ao arquivo de configuração (`%APPDATA%\Claude\claude_desktop_config.json` no Windows):

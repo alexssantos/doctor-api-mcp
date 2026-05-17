@@ -54,8 +54,8 @@ spec:
             - name: varlog
               mountPath: /var/log
               readOnly: true
-            - name: varlibdockercontainers
-              mountPath: /var/lib/docker/containers
+            - name: varlogpods
+              mountPath: /var/log/pods
               readOnly: true
           resources:
             requests:
@@ -71,6 +71,6 @@ spec:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: varlibdockercontainers
+        - name: varlogpods
           hostPath:
-            path: /var/lib/docker/containers
+            path: /var/log/pods

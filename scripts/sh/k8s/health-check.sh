@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# k8s/health-check.sh — Verifica se todos os serviços estão up no Kubernetes
+# Usage: bash scripts/k8s/health-check.sh
+set -euo pipefail
+
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+NAMESPACE="mcp-apis"
+CLUSTER_CONTEXT="k3d-mcp-apis"
+PASS=0
+FAIL=0
+PF_PIDS=()
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+pass() { echo -e "  ${GREEN}✅ $1${NC}"; PASS=$((PASS + 1)); }
+fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=$((FAIL + 1)); }
+warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
+section() { echo ""; echo "=== $1 ==="; }
+
+cleanup() {
+  if [[ ${#PF_PIDS[@]} -gt 0 ]]; then
+    kill "${PF_PIDS[@]}" 2>/dev/null || true
+    echo ""
+    echo "Port-forwards encerrados."
+  fi
+}
+trap cleanup EXIT
+
+http_check() {
+  local label="$1" url="$2" expected="${3:-200}"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
+  if [[ "$code" == "$expected" ]]; then
+    pass "$label → HTTP $code"
+  else
+    fail "$label → esperado HTTP $expected, obtido HTTP $code ($url)"
+  fi
+}
+
+http_body_check() {
+  local label="$1" url="$2" pattern="$3"
+  local body
+  body=$(curl -s --max-time 5 "$url" 2>/dev/null || echo "")
+  if echo "$body" | grep -q "$pattern"; then
+    pass "$label"
+  else
+    fail "$label (padrão '$pattern' não encontrado em $url)"
+  fi
+}
+
+echo "╔══════════════════════════════════════════════╗"
+echo "║   mcp-apis — Kubernetes Health Check         ║"
+echo "╚══════════════════════════════════════════════╝"
+
+# ─── 1. Ferramentas ───────────────────────────────────────────────────────────
+section "1. Ferramentas"
+for cmd in kubectl k3d curl; do
+  if command -v "$cmd" &>/dev/null; then
+    pass "$cmd disponível"
+  else
+    fail "$cmd não encontrado no PATH"
+  fi
+done
+
+# ─── 2. Cluster k3d ───────────────────────────────────────────────────────────
+section "2. Cluster k3d"
+if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -q "^mcp-apis$"; then
+  STATUS=$(k3d cluster list --no-headers 2>/dev/null | awk '/^mcp-apis/{print $2}')
+  pass "Cluster 'mcp-apis' existe (servidores: $STATUS)"
+else
+  fail "Cluster 'mcp-apis' não encontrado. Execute deploy-k8s.sh ou deploy-helm.sh"
+  echo ""
+  echo "Cluster não encontrado. Não é possível continuar."
+  exit 1
+fi
+
+kubectl config use-context "${CLUSTER_CONTEXT}" >/dev/null 2>&1
+pass "Contexto kubectl definido para '${CLUSTER_CONTEXT}'"
+
+# ─── 3. Namespace ─────────────────────────────────────────────────────────────
+section "3. Namespace"
+if kubectl get namespace "${NAMESPACE}" &>/dev/null; then
+  pass "Namespace '${NAMESPACE}' existe"
+else
+  fail "Namespace '${NAMESPACE}' não encontrado"
+  exit 1
+fi
+
+# ─── 4. Pods ──────────────────────────────────────────────────────────────────
+section "4. Pods"
+declare -A EXPECTED_PODS=(
+  ["precoapi"]="precoapi"
+  ["produtoapi"]="produtoapi"
+  ["mcpserver"]="mcpserver"
+  ["postgres-produto"]="postgres-produto"
+  ["postgres-preco"]="postgres-preco"
+  ["jaeger"]="jaeger"
+  ["prometheus"]="prometheus"
+  ["grafana"]="grafana"
+  ["loki"]="loki"
+  ["promtail"]="promtail"
+)
+
+for label in "${!EXPECTED_PODS[@]}"; do
+  app="${EXPECTED_PODS[$label]}"
+  POD_STATUS=$(kubectl get pods -n "${NAMESPACE}" -l "app=${app}" \
+    --no-headers 2>/dev/null | awk '{print $3}' | head -1)
+  READY=$(kubectl get pods -n "${NAMESPACE}" -l "app=${app}" \
+    --no-headers 2>/dev/null | awk '{print $2}' | head -1)
+  if [[ "$POD_STATUS" == "Running" ]]; then
+    pass "Pod $label → Running ($READY)"
+  elif [[ -z "$POD_STATUS" ]]; then
+    fail "Pod $label → nenhum pod encontrado (label app=${app})"
+  else
+    fail "Pod $label → $POD_STATUS ($READY)"
+  fi
+done
+
+# ─── 5. Deployments / StatefulSets ────────────────────────────────────────────
+section "5. Deployments e StatefulSets"
+
+while IFS= read -r line; do
+  name=$(echo "$line" | awk '{print $1}')
+  ready=$(echo "$line" | awk '{print $2}')
+  desired=$(echo "$ready" | cut -d'/' -f2)
+  current=$(echo "$ready" | cut -d'/' -f1)
+  if [[ "$current" == "$desired" && "$desired" != "0" ]]; then
+    pass "Deployment $name → $ready pronto"
+  else
+    fail "Deployment $name → $ready (nem todos os pods prontos)"
+  fi
+done < <(kubectl get deployments -n "${NAMESPACE}" --no-headers 2>/dev/null)
+
+while IFS= read -r line; do
+  name=$(echo "$line" | awk '{print $1}')
+  ready=$(echo "$line" | awk '{print $2}')
+  desired=$(echo "$ready" | cut -d'/' -f2)
+  current=$(echo "$ready" | cut -d'/' -f1)
+  if [[ "$current" == "$desired" && "$desired" != "0" ]]; then
+    pass "StatefulSet $name → $ready pronto"
+  else
+    fail "StatefulSet $name → $ready (nem todos os pods prontos)"
+  fi
+done < <(kubectl get statefulsets -n "${NAMESPACE}" --no-headers 2>/dev/null)
+
+# ─── 6. Port-forwards ─────────────────────────────────────────────────────────
+section "6. Iniciando port-forwards"
+echo "  Aguardando serviços ficarem acessíveis..."
+
+start_pf() {
+  local svc="$1" local_port="$2" remote_port="$3"
+  kubectl port-forward -n "${NAMESPACE}" "svc/${svc}" "${local_port}:${remote_port}" \
+    >/dev/null 2>&1 &
+  PF_PIDS+=($!)
+}
+
+start_pf precoapi   5001 80
+start_pf produtoapi 5002 80
+start_pf mcpserver  4000 4000
+start_pf prometheus 9090 9090
+start_pf grafana    3000 3000
+start_pf jaeger     16686 16686
+
+sleep 6
+pass "Port-forwards iniciados (${#PF_PIDS[@]} processos)"
+
+# ─── 7. Endpoints HTTP ────────────────────────────────────────────────────────
+section "7. Endpoints HTTP"
+http_check "PrecoAPI   /metrics"          "http://localhost:5001/metrics"
+http_check "PrecoAPI   /scalar/v1"        "http://localhost:5001/scalar/v1"
+http_check "ProdutoAPI /metrics"          "http://localhost:5002/metrics"
+http_check "ProdutoAPI /scalar/v1"        "http://localhost:5002/scalar/v1"
+http_check "McpServer  /health"           "http://localhost:4000/health"
+http_check "Prometheus /api/v1/status"    "http://localhost:9090/api/v1/status/config"
+http_check "Grafana    /api/health"       "http://localhost:3000/api/health"
+http_check "Jaeger     UI"                "http://localhost:16686"
+
+# ─── 8. Saúde do conteúdo ─────────────────────────────────────────────────────
+section "8. Conteúdo dos endpoints"
+http_body_check "PrecoAPI   /metrics contém 'http_server'"   "http://localhost:5001/metrics"          "http_server"
+http_body_check "ProdutoAPI /metrics contém 'http_server'"   "http://localhost:5002/metrics"          "http_server"
+http_body_check "McpServer  /health resposta 'healthy'"      "http://localhost:4000/health"            "healthy"
+http_body_check "Grafana    datasources configurados"        "http://localhost:3000/api/health"        "ok"
+
+# Prometheus targets
+section "9. Prometheus targets"
+TARGETS=$(curl -s --max-time 5 "http://localhost:9090/api/v1/targets" 2>/dev/null || echo "")
+if [[ -n "$TARGETS" ]]; then
+  UP_COUNT=$(echo "$TARGETS" | python3 -c \
+    "import sys,json; d=json.load(sys.stdin); print(sum(1 for t in d['data']['activeTargets'] if t['health']=='up'))" \
+    2>/dev/null || echo "0")
+  if [[ "$UP_COUNT" -ge 2 ]]; then
+    pass "Prometheus: $UP_COUNT target(s) UP"
+  else
+    fail "Prometheus: apenas $UP_COUNT target(s) UP (esperado ≥ 2)"
+  fi
+else
+  fail "Prometheus: sem resposta em /api/v1/targets"
+fi
+
+# ─── 10. MCP Server — initialize ──────────────────────────────────────────────
+section "10. MCP Server — protocolo"
+MCP_RESP=$(curl -s -X POST "http://localhost:4000/" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  --max-time 5 \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"healthcheck","version":"1.0"}}}' \
+  2>/dev/null || echo "")
+if echo "$MCP_RESP" | grep -q "mcp-apis-server"; then
+  pass "MCP initialize respondeu com serverInfo correto"
+else
+  fail "MCP initialize sem resposta esperada"
+fi
+
+# ─── Resumo ───────────────────────────────────────────────────────────────────
+echo ""
+echo "══════════════════════════════════════════════"
+TOTAL=$((PASS + FAIL))
+echo -e "  Resultado: ${GREEN}${PASS} passou${NC} / ${RED}${FAIL} falhou${NC} (total: $TOTAL)"
+echo "══════════════════════════════════════════════"
+echo ""
+
+if [[ "$FAIL" -gt 0 ]]; then
+  exit 1
+fi

@@ -3,7 +3,7 @@
 # Usage: bash scripts/deploy-k8s.sh [--capture-body]
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"
 CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
 CAPTURE_BODY="false"

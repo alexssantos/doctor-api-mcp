@@ -3,7 +3,7 @@
 # Usage: bash scripts/deploy-helm.sh [--capture-body] [--image-tag <tag>]
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"
 CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
 CAPTURE_BODY="false"
