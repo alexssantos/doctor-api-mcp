@@ -3,14 +3,12 @@
 # Ao final executa health-check completo com port-forwards.
 #
 # Uso:
-#   .\scripts\ps\up-k8s.ps1                   # deploy via Helm (padrao)
-#   .\scripts\ps\up-k8s.ps1 -K8s             # deploy via kubectl raw manifests
-#   .\scripts\ps\up-k8s.ps1 -Build            # executa build das imagens Docker
-#   .\scripts\ps\up-k8s.ps1 -SkipHealthCheck  # pula verificacao final
-#   .\scripts\ps\up-k8s.ps1 -CaptureBody      # habilita captura de body no OTEL
+#   .\infra\scripts\ps\up-k8s.ps1                   # deploy via kubectl (padrao)
+#   .\infra\scripts\ps\up-k8s.ps1 -Build            # executa build das imagens Docker
+#   .\infra\scripts\ps\up-k8s.ps1 -SkipHealthCheck  # pula verificacao final
+#   .\infra\scripts\ps\up-k8s.ps1 -CaptureBody      # habilita captura de body no OTEL
 #Requires -Version 5.1
 param(
-    [switch]$K8s,
     [switch]$Build,
     [switch]$CaptureBody,
     [switch]$SkipHealthCheck
@@ -41,10 +39,6 @@ Write-Host ""
 Write-Host "╔══════════════════════════════════════════════╗" -ForegroundColor White
 Write-Host "║      mcp-apis  --  up-k8s                    ║" -ForegroundColor White
 Write-Host "╚══════════════════════════════════════════════╝" -ForegroundColor White
-
-$deployMode = if ($K8s) { 'k8s' } else { 'helm' }
-Write-Host "  Modo de deploy: " -NoNewline -ForegroundColor White
-Write-Host $deployMode.ToUpper() -ForegroundColor $(if ($K8s) { 'Yellow' } else { 'Cyan' })
 
 # ─── 0. Validar ambiente WSL (Windows only) ───────────────────────────────────
 Banner "0. Validando ambiente WSL"
@@ -139,109 +133,51 @@ if ($Build) {
 }
 
 # ─── 4. Namespace e Deploy ────────────────────────────────────────────────────
-Banner "4. Namespace e Deploy ($deployMode)"
+Banner "4. Namespace e Deploy"
 
 RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/namespace.yaml"
 Ok "Namespace '$NAMESPACE'"
 
-if ($K8s) {
-    # ── Raw kubectl manifests ──────────────────────────────────────────────────
-    $manifests = @(
-        'postgres-produto'
-        'postgres-preco'
-        'jaeger'
-        'prometheus'
-        'loki'
-        'promtail'
-        'grafana'
-        'mcpserver'
-        'precoapi'
-        'produtoapi'
-    )
-    foreach ($m in $manifests) {
-        $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
-        if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
-        Ok "Manifest $m aplicado"
-    }
+$manifests = @(
+    'postgres-produto'
+    'postgres-preco'
+    'jaeger'
+    'prometheus'
+    'loki'
+    'promtail'
+    'grafana'
+    'mcpserver'
+    'precoapi'
+    'produtoapi'
+)
+foreach ($m in $manifests) {
+    $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
+    Ok "Manifest $m aplicado"
+}
 
-    if ($CaptureBody) {
-        $patchJson = '{"data":{"Otel__CaptureBody":"true"}}'
-        Info "Habilitando CaptureBody no OTEL..."
-        RunInWSL "kubectl patch configmap precoapi-config   -n $NAMESPACE --type merge -p '$patchJson'"
-        RunInWSL "kubectl patch configmap produtoapi-config -n $NAMESPACE --type merge -p '$patchJson'"
-        Ok "CaptureBody habilitado"
-    }
-} else {
-    # ── Helm ───────────────────────────────────────────────────────────────────
-    Info "Adicionando repositorio Bitnami..."
-    RunInWSL "helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true"
-    RunInWSL "helm repo update"
-    Ok "Repositorio Bitnami atualizado"
-
-    Info "Instalando PostgreSQL para ProdutoDB..."
-    RunInWSL "helm upgrade --install postgres-produto bitnami/postgresql --namespace $NAMESPACE --set auth.username=postgres --set auth.password=postgres --set auth.database=produto_db --wait --timeout 120s"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar postgres-produto via Helm" }
-    Ok "PostgreSQL produto instalado"
-
-    Info "Instalando PostgreSQL para PrecoDB..."
-    RunInWSL "helm upgrade --install postgres-preco bitnami/postgresql --namespace $NAMESPACE --set auth.username=postgres --set auth.password=postgres --set auth.database=preco_db --wait --timeout 120s"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar postgres-preco via Helm" }
-    Ok "PostgreSQL preco instalado"
-
-    # Observability stack permanece via kubectl (sem Helm chart dedicado)
-    $obsManifests = @('jaeger', 'prometheus', 'loki', 'promtail', 'grafana')
-    foreach ($m in $obsManifests) {
-        $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
-        if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
-        Ok "Manifest $m aplicado"
-    }
-
-    $captureBodyFlag = if ($CaptureBody) { '--set otel.captureBody=true' } else { '' }
-
-    Info "Instalando PrecoAPI via Helm..."
-    RunInWSL "helm upgrade --install precoapi $WSL_REPO/infra/helm/precoapi --namespace $NAMESPACE --set db.host=postgres-preco-postgresql $captureBodyFlag --wait --timeout 120s"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar precoapi via Helm" }
-    Ok "PrecoAPI instalada"
-
-    Info "Instalando ProdutoAPI via Helm..."
-    RunInWSL "helm upgrade --install produtoapi $WSL_REPO/infra/helm/produtoapi --namespace $NAMESPACE --set db.host=postgres-produto-postgresql $captureBodyFlag --wait --timeout 120s"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar produtoapi via Helm" }
-    Ok "ProdutoAPI instalada"
-
-    Info "Instalando MCP Server via Helm..."
-    RunInWSL "helm upgrade --install mcpserver $WSL_REPO/infra/helm/mcpserver --namespace $NAMESPACE --wait --timeout 120s"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar mcpserver via Helm" }
-    Ok "MCP Server instalado"
+if ($CaptureBody) {
+    $patchJson = '{"data":{"Otel__CaptureBody":"true"}}'
+    Info "Habilitando CaptureBody no OTEL..."
+    RunInWSL "kubectl patch configmap precoapi-config   -n $NAMESPACE --type merge -p '$patchJson'"
+    RunInWSL "kubectl patch configmap produtoapi-config -n $NAMESPACE --type merge -p '$patchJson'"
+    Ok "CaptureBody habilitado"
 }
 
 # ─── 5. Aguardar rollouts ─────────────────────────────────────────────────────
 Banner "5. Aguardando rollouts"
 
-if ($K8s) {
-    $rollouts = @(
-        @{ Kind = 'statefulset'; Name = 'postgres-produto' }
-        @{ Kind = 'statefulset'; Name = 'postgres-preco' }
-        @{ Kind = 'deployment';  Name = 'jaeger' }
-        @{ Kind = 'deployment';  Name = 'prometheus' }
-        @{ Kind = 'deployment';  Name = 'loki' }
-        @{ Kind = 'deployment';  Name = 'grafana' }
-        @{ Kind = 'deployment';  Name = 'mcpserver' }
-        @{ Kind = 'deployment';  Name = 'precoapi' }
-        @{ Kind = 'deployment';  Name = 'produtoapi' }
-    )
-} else {
-    $rollouts = @(
-        @{ Kind = 'statefulset'; Name = 'postgres-produto-postgresql' }
-        @{ Kind = 'statefulset'; Name = 'postgres-preco-postgresql' }
-        @{ Kind = 'deployment';  Name = 'jaeger' }
-        @{ Kind = 'deployment';  Name = 'prometheus' }
-        @{ Kind = 'deployment';  Name = 'loki' }
-        @{ Kind = 'deployment';  Name = 'grafana' }
-        @{ Kind = 'deployment';  Name = 'mcpserver' }
-        @{ Kind = 'deployment';  Name = 'precoapi' }
-        @{ Kind = 'deployment';  Name = 'produtoapi' }
-    )
-}
+$rollouts = @(
+    @{ Kind = 'statefulset'; Name = 'postgres-produto' }
+    @{ Kind = 'statefulset'; Name = 'postgres-preco' }
+    @{ Kind = 'deployment';  Name = 'jaeger' }
+    @{ Kind = 'deployment';  Name = 'prometheus' }
+    @{ Kind = 'deployment';  Name = 'loki' }
+    @{ Kind = 'deployment';  Name = 'grafana' }
+    @{ Kind = 'deployment';  Name = 'mcpserver' }
+    @{ Kind = 'deployment';  Name = 'precoapi' }
+    @{ Kind = 'deployment';  Name = 'produtoapi' }
+)
 
 foreach ($r in $rollouts) {
     Info "Aguardando $($r.Kind)/$($r.Name)..."
@@ -256,7 +192,7 @@ if (-not $SkipHealthCheck) {
     Info "Executando health check (bash)..."
 
     # Delega para o bash script que ja gerencia os port-forwards corretamente
-    $hcOutput = RunInWSL "bash $WSL_REPO/infra/scripts/sh/k8s/health-check.sh 2>&1"
+    $hcOutput = RunInWSL "bash $WSL_REPO/infra/scripts/sh/health-check.sh 2>&1"
     $hcOutput | ForEach-Object { Write-Host "  $_" }
 
     # Extrai contadores da linha HEALTH_SUMMARY gerada pelo bash script

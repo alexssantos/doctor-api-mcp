@@ -1,8 +1,6 @@
-﻿#!/usr/bin/env bash
-# deploy-k8s.sh — Deploy mcp-apis to k3d via kubectl raw manifests (modo alternativo)
-# Usage: bash scripts/sh/deploy-k8s.sh [--capture-body]
-#
-# Para o deploy padrao com Helm, use: bash scripts/sh/deploy-helm.sh
+#!/usr/bin/env bash
+# deploy-k8s.sh — Deploy mcp-apis to k3d via kubectl raw manifests
+# Usage: bash infra/scripts/sh/deploy-k8s.sh [--capture-body]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../." && pwd)"
@@ -30,7 +28,7 @@ echo "[OK]  All prerequisites found."
 
 # ─── k3d cluster ──────────────────────────────────────────────────────────────
 if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -q "^${CLUSTER_NAME}$"; then
-  echo "ℹ️  k3d cluster '${CLUSTER_NAME}' already exists — skipping creation."
+  echo "INFO  k3d cluster '${CLUSTER_NAME}' already exists — skipping creation."
 else
   echo ">>> Creating k3d cluster '${CLUSTER_NAME}'..."
   k3d cluster create "${CLUSTER_NAME}" \
@@ -45,7 +43,7 @@ kubectl config use-context "k3d-${CLUSTER_NAME}"
 echo "[NET] Installing nginx ingress controller..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
 
-echo "⏳ Waiting for ingress controller to be ready..."
+echo "... Waiting for ingress controller to be ready..."
 kubectl wait \
   --namespace ingress-nginx \
   --for=condition=ready pod \
@@ -53,7 +51,7 @@ kubectl wait \
   --timeout=180s
 
 # ─── Build + load Docker images ────────────────────────────────────────────────
-echo "🐳 Building Docker images..."
+echo "[IMG] Building Docker images..."
 
 docker build \
   -f "${REPO_ROOT}/src/Services/PrecoAPI/Dockerfile" \
@@ -94,7 +92,7 @@ if [[ "$CAPTURE_BODY" == "true" ]]; then
 fi
 
 # ─── Wait for rollouts ─────────────────────────────────────────────────────────
-echo "⏳ Waiting for rollouts..."
+echo "... Waiting for rollouts..."
 
 kubectl rollout status statefulset/postgres-produto -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status statefulset/postgres-preco   -n "${NAMESPACE}" --timeout=120s

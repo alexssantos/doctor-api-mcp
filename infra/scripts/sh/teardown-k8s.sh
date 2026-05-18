@@ -1,14 +1,11 @@
-﻿#!/usr/bin/env bash
-# teardown-k8s.sh — Remove mcp-apis namespace and delete the k3d cluster
+#!/usr/bin/env bash
+# teardown-k8s.sh — Remove o namespace mcp-apis (e todos os recursos dentro dele).
+# O cluster k3d NAO e deletado; use 'k3d cluster delete mcp-apis' manualmente se necessario.
 set -euo pipefail
 
-CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
 
-echo "🗑️  Deleting namespace '${NAMESPACE}'..."
+echo "Deletando namespace '${NAMESPACE}'..."
 kubectl delete namespace "${NAMESPACE}" --ignore-not-found=true
 
-echo "💥 Deleting k3d cluster '${CLUSTER_NAME}'..."
-k3d cluster delete "${CLUSTER_NAME}"
-
-echo "[OK]  Teardown complete."
+echo "[OK]  Namespace removido. Cluster k3d permanece intacto."
