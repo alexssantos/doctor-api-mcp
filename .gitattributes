@@ -1,0 +1,9 @@
+# Ensure LF line endings for shell scripts
+*.sh text eol=lf
+
+# Windows scripts use CRLF
+*.ps1 text eol=crlf
+
+# Kubernetes/Helm YAML — LF
+*.yaml text eol=lf
+*.yml  text eol=lf

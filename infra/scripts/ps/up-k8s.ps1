@@ -82,6 +82,12 @@ if ($clusters -contains $CLUSTER_NAME) {
     Ok "Cluster criado"
 }
 
+# Sincronizar kubeconfig (k3d nao consegue rename cross-device com symlink WSL->Windows)
+Info "Sincronizando kubeconfig..."
+$syncCmd = "bash $WSL_REPO/infra/scripts/sh/sync-kubeconfig.sh $CLUSTER_NAME"
+RunInWSL $syncCmd
+Ok "Kubeconfig sincronizado"
+
 $null = RunInWSL "kubectl config use-context $CLUSTER_CONTEXT 2>&1"
 if ($LASTEXITCODE -ne 0) { Err "Falha ao definir contexto kubectl '$CLUSTER_CONTEXT'" }
 Ok "Contexto kubectl: $CLUSTER_CONTEXT"
