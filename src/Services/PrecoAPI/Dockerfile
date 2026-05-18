@@ -7,6 +7,7 @@ COPY src/BuildingBlocks/Observability/McpApis.BuildingBlocks.Observability.cspro
 COPY src/BuildingBlocks/Http/McpApis.BuildingBlocks.Http.csproj ./src/BuildingBlocks/Http/
 COPY src/Services/PrecoAPI/McpApis.PrecoAPI.csproj ./src/Services/PrecoAPI/
 COPY src/Services/ProdutoAPI/McpApis.ProdutoAPI.csproj ./src/Services/ProdutoAPI/
+COPY src/Services/McpServer/McpApis.McpServer.csproj ./src/Services/McpServer/
 
 # Restore (cached if .csproj unchanged)
 RUN dotnet restore src/Services/PrecoAPI/McpApis.PrecoAPI.csproj

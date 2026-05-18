@@ -13,4 +13,7 @@
   <Folder Name="/Services/ProdutoAPI/">
     <Project Path="Services/ProdutoAPI/McpApis.ProdutoAPI.csproj" />
   </Folder>
+  <Folder Name="/Services/McpServer/">
+    <Project Path="Services/McpServer/McpApis.McpServer.csproj" />
+  </Folder>
 </Solution>

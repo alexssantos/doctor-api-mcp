@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcpserver-config
+  namespace: mcp-apis
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  Jaeger__BaseUrl: "http://jaeger:16686"
+  Kubernetes__Namespace: "mcp-apis"
+  Services__precoapi: "http://precoapi"
+  Services__produtoapi: "http://produtoapi"

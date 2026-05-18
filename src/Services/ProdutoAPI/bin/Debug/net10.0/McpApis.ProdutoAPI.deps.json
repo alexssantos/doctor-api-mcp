@@ -130,6 +130,17 @@
           }
         }
       },
+      "OpenTelemetry.Exporter.Prometheus.AspNetCore/1.11.0-beta.1": {
+        "dependencies": {
+          "OpenTelemetry": "1.12.0"
+        },
+        "runtime": {
+          "lib/net9.0/OpenTelemetry.Exporter.Prometheus.AspNetCore.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.11.0.1537"
+          }
+        }
+      },
       "OpenTelemetry.Extensions.Hosting/1.12.0": {
         "dependencies": {
           "OpenTelemetry": "1.12.0"
@@ -174,6 +185,17 @@
           }
         }
       },
+      "OpenTelemetry.Instrumentation.Runtime/1.10.0": {
+        "dependencies": {
+          "OpenTelemetry.Api": "1.12.0"
+        },
+        "runtime": {
+          "lib/net8.0/OpenTelemetry.Instrumentation.Runtime.dll": {
+            "assemblyVersion": "1.10.0.257",
+            "fileVersion": "1.10.0.257"
+          }
+        }
+      },
       "Scalar.AspNetCore/2.5.0": {
         "runtime": {
           "lib/net9.0/Scalar.AspNetCore.dll": {
@@ -194,10 +216,12 @@
         "dependencies": {
           "OpenTelemetry": "1.12.0",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "1.12.0",
+          "OpenTelemetry.Exporter.Prometheus.AspNetCore": "1.11.0-beta.1",
           "OpenTelemetry.Extensions.Hosting": "1.12.0",
           "OpenTelemetry.Instrumentation.AspNetCore": "1.12.0",
           "OpenTelemetry.Instrumentation.EntityFrameworkCore": "1.12.0-beta.1",
-          "OpenTelemetry.Instrumentation.Http": "1.12.0"
+          "OpenTelemetry.Instrumentation.Http": "1.12.0",
+          "OpenTelemetry.Instrumentation.Runtime": "1.10.0"
         },
         "runtime": {
           "McpApis.BuildingBlocks.Observability.dll": {
@@ -291,6 +315,13 @@
       "path": "opentelemetry.exporter.opentelemetryprotocol/1.12.0",
       "hashPath": "opentelemetry.exporter.opentelemetryprotocol.1.12.0.nupkg.sha512"
     },
+    "OpenTelemetry.Exporter.Prometheus.AspNetCore/1.11.0-beta.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-N6sxJqXWkmpEdSuH5/BSNzTU5MT3RVTkd7SbvjCndJTUQa+8vdAAnyBBWL9jiJ7pWs7MLhBzhWRO3iWeqUqung==",
+      "path": "opentelemetry.exporter.prometheus.aspnetcore/1.11.0-beta.1",
+      "hashPath": "opentelemetry.exporter.prometheus.aspnetcore.1.11.0-beta.1.nupkg.sha512"
+    },
     "OpenTelemetry.Extensions.Hosting/1.12.0": {
       "type": "package",
       "serviceable": true,
@@ -318,6 +349,13 @@
       "sha512": "sha512-0rW+MbHgUQAdbvBtRxPYoQBosbNdWegL7cYkRlxq+KQ/VFyU8itt4pWTccmu1/FWmTgqJyT3LaujyDZoRrm8Yg==",
       "path": "opentelemetry.instrumentation.http/1.12.0",
       "hashPath": "opentelemetry.instrumentation.http.1.12.0.nupkg.sha512"
+    },
+    "OpenTelemetry.Instrumentation.Runtime/1.10.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+IrgISnm2KxowLrCUheuQZP0r2t2XK8kkEJKpy3ZjAVN480qWXHmj5ZQJRhxDOYdIIgrZoL/7XaTO6CqtN7RMw==",
+      "path": "opentelemetry.instrumentation.runtime/1.10.0",
+      "hashPath": "opentelemetry.instrumentation.runtime.1.10.0.nupkg.sha512"
     },
     "Scalar.AspNetCore/2.5.0": {
       "type": "package",
