@@ -6,6 +6,9 @@
 # Uso (requer PowerShell como Administrador):
 #   .\infra\scripts\ps\setup-hosts.ps1
 #
+# Utilize o comando flushdns para limpar o cache de DNS do Windows, caso necessario:
+#   ipconfig /flushdns
+#
 # URLs disponiveis apos executar este script:
 #   http://precoapi.local:8080/scalar/v1
 #   http://produtoapi.local:8080/scalar/v1
