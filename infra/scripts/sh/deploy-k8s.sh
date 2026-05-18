@@ -5,7 +5,7 @@
 # Para o deploy padrao com Helm, use: bash scripts/sh/deploy-helm.sh
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../." && pwd)"
 CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
 CAPTURE_BODY="false"
@@ -76,17 +76,17 @@ k3d image import precoapi:latest produtoapi:latest mcpserver:latest --cluster "$
 # ─── Apply manifests (ordered) ─────────────────────────────────────────────────
 echo "📋 Applying Kubernetes manifests..."
 
-kubectl apply -f "${REPO_ROOT}/k8s/namespace.yaml"
-kubectl apply -f "${REPO_ROOT}/k8s/postgres-produto/"
-kubectl apply -f "${REPO_ROOT}/k8s/postgres-preco/"
-kubectl apply -f "${REPO_ROOT}/k8s/jaeger/"
-kubectl apply -f "${REPO_ROOT}/k8s/prometheus/"
-kubectl apply -f "${REPO_ROOT}/k8s/loki/"
-kubectl apply -f "${REPO_ROOT}/k8s/promtail/"
-kubectl apply -f "${REPO_ROOT}/k8s/grafana/"
-kubectl apply -f "${REPO_ROOT}/k8s/mcpserver/"
-kubectl apply -f "${REPO_ROOT}/k8s/precoapi/"
-kubectl apply -f "${REPO_ROOT}/k8s/produtoapi/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/namespace.yaml"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/postgres-produto/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/postgres-preco/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/jaeger/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/prometheus/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/loki/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/promtail/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/grafana/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/mcpserver/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/precoapi/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/produtoapi/"
 
 if [[ "$CAPTURE_BODY" == "true" ]]; then
   kubectl patch configmap precoapi-config   -n "${NAMESPACE}" --type merge -p '{"data":{"Otel__CaptureBody":"true"}}'
@@ -112,7 +112,7 @@ cat <<EOF
 ✅ Deploy complete!
 
 � Run the port-forward script to access the services (no hosts file needed):
-   bash scripts/port-forward.sh
+   bash infra/scripts/sh/port-forward.sh
 
    Then open:
    PrecoAPI   → http://localhost:5001/api/prices

@@ -7,4 +7,4 @@ SCRIPT="${1:-deploy-helm.sh}"
 REPO="/mnt/c/dev/repos/projetos/mcp-apis"
 
 cd "$REPO"
-exec bash "scripts/${SCRIPT}" "${@:2}"
+exec bash "infra/scripts/${SCRIPT}" "${@:2}"

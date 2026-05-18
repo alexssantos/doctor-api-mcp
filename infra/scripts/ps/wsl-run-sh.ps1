@@ -35,13 +35,13 @@ if ($IsWindows -or $env:OS -eq 'Windows_NT') {
 }
 
 # Resolver caminho do script .sh
-$repoRoot   = (Resolve-Path "$PSScriptRoot\..\..").Path
+$repoRoot   = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $driveLetter = $repoRoot.Substring(0, 1).ToLower()
 $wslRepo    = "/mnt/$driveLetter" + ($repoRoot.Substring(2) -replace '\\', '/')
 
 # Normalizar nome do script (aceita com ou sem prefixo sh/)
 $scriptName = $Script -replace '^sh[/\\]', ''
-$wslScript  = "$wslRepo/scripts/sh/$scriptName"
+$wslScript  = "$wslRepo/infra/scripts/sh/$scriptName"
 
 $argsStr = ($ScriptArgs | ForEach-Object { "'$_'" }) -join ' '
 

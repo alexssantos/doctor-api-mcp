@@ -5,7 +5,7 @@
 # Para deploy via kubectl raw manifests, use: bash scripts/sh/deploy-k8s.sh
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../." && pwd)"
 CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
 CAPTURE_BODY="false"
@@ -44,7 +44,7 @@ fi
 kubectl config use-context "k3d-${CLUSTER_NAME}"
 
 # ─── Namespace ─────────────────────────────────────────────────────────────────
-kubectl apply -f "${REPO_ROOT}/k8s/namespace.yaml"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/namespace.yaml"
 
 # ─── Nginx ingress controller ──────────────────────────────────────────────────
 echo "🌐 Installing nginx ingress controller..."
@@ -85,15 +85,15 @@ POSTGRES_PRECO_HOST="postgres-preco-postgresql"
 
 # ─── Jaeger (raw manifest — no dedicated Helm chart needed) ────────────────────
 echo "🔭 Installing Jaeger..."
-kubectl apply -f "${REPO_ROOT}/k8s/jaeger/deployment.yaml"
-kubectl apply -f "${REPO_ROOT}/k8s/jaeger/service.yaml"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/jaeger/deployment.yaml"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/jaeger/service.yaml"
 kubectl rollout status deployment/jaeger -n "${NAMESPACE}" --timeout=120s
 # ─── Observability stack (Prometheus + Loki + Promtail + Grafana) ────────
 echo "📊 Installing observability stack..."
-kubectl apply -f "${REPO_ROOT}/k8s/prometheus/"
-kubectl apply -f "${REPO_ROOT}/k8s/loki/"
-kubectl apply -f "${REPO_ROOT}/k8s/promtail/"
-kubectl apply -f "${REPO_ROOT}/k8s/grafana/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/prometheus/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/loki/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/promtail/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/grafana/"
 kubectl rollout status deployment/prometheus -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status deployment/loki       -n "${NAMESPACE}" --timeout=120s
 kubectl rollout status deployment/grafana    -n "${NAMESPACE}" --timeout=120s
@@ -120,7 +120,7 @@ k3d image import "precoapi:${IMAGE_TAG}" "produtoapi:${IMAGE_TAG}" "mcpserver:${
 
 # ─── Helm install: PrecoAPI ────────────────────────────────────────────────────
 echo "⚙️  Installing PrecoAPI Helm chart..."
-helm upgrade --install precoapi "${REPO_ROOT}/helm/precoapi" \
+helm upgrade --install precoapi "${REPO_ROOT}/infra/helm/precoapi" \
   --namespace "${NAMESPACE}" \
   --set image.tag="${IMAGE_TAG}" \
   --set db.host="${POSTGRES_PRECO_HOST}" \
@@ -129,7 +129,7 @@ helm upgrade --install precoapi "${REPO_ROOT}/helm/precoapi" \
 
 # ─── Helm install: ProdutoAPI ─────────────────────────────────────────────────
 echo "⚙️  Installing ProdutoAPI Helm chart..."
-helm upgrade --install produtoapi "${REPO_ROOT}/helm/produtoapi" \
+helm upgrade --install produtoapi "${REPO_ROOT}/infra/helm/produtoapi" \
   --namespace "${NAMESPACE}" \
   --set image.tag="${IMAGE_TAG}" \
   --set db.host="${POSTGRES_PRODUTO_HOST}" \
@@ -138,7 +138,7 @@ helm upgrade --install produtoapi "${REPO_ROOT}/helm/produtoapi" \
 
 # ─── Helm install: MCP Server ──────────────────────────────────────────────────
 echo "⚙️  Installing MCP Server Helm chart..."
-helm upgrade --install mcpserver "${REPO_ROOT}/helm/mcpserver" \
+helm upgrade --install mcpserver "${REPO_ROOT}/infra/helm/mcpserver" \
   --namespace "${NAMESPACE}" \
   --set image.tag="${IMAGE_TAG}" \
   --wait --timeout 120s
@@ -154,7 +154,7 @@ cat <<EOF
 ✅ Helm deploy complete!
 
 � Run the port-forward script to access the services (no hosts file needed):
-   bash scripts/port-forward.sh
+   bash infra/scripts/sh/port-forward.sh
 
    Then open:
    PrecoAPI   → http://localhost:5001/api/prices
@@ -167,6 +167,6 @@ cat <<EOF
    MCP Server → http://localhost:4000/sse  (SSE transport)
 
 🔄 To upgrade (e.g. after code change):
-   bash scripts/deploy-helm.sh --image-tag v1.1.0
+   bash infra/scripts/sh/deploy-helm.sh --image-tag v1.1.0
 
 EOF

@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 $NAMESPACE       = 'mcp-apis'
 $CLUSTER_NAME    = 'mcp-apis'
 $CLUSTER_CONTEXT = "k3d-$CLUSTER_NAME"
-$REPO_ROOT       = (Resolve-Path "$PSScriptRoot\..\..").Path
+$REPO_ROOT       = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $driveLetter     = $REPO_ROOT.Substring(0,1).ToLower()
 $WSL_REPO        = "/mnt/$driveLetter" + ($REPO_ROOT.Substring(2) -replace '\\', '/')
 
@@ -135,7 +135,7 @@ if ($Build) {
 # ─── 4. Namespace e Deploy ────────────────────────────────────────────────────
 Banner "4. Namespace e Deploy ($deployMode)"
 
-RunInWSL "kubectl apply -f $WSL_REPO/k8s/namespace.yaml"
+RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/namespace.yaml"
 Ok "Namespace '$NAMESPACE'"
 
 if ($K8s) {
@@ -153,7 +153,7 @@ if ($K8s) {
         'produtoapi'
     )
     foreach ($m in $manifests) {
-        $null = RunInWSL "kubectl apply -f $WSL_REPO/k8s/$m 2>&1"
+        $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
         if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
         Ok "Manifest $m aplicado"
     }
@@ -185,7 +185,7 @@ if ($K8s) {
     # Observability stack permanece via kubectl (sem Helm chart dedicado)
     $obsManifests = @('jaeger', 'prometheus', 'loki', 'promtail', 'grafana')
     foreach ($m in $obsManifests) {
-        $null = RunInWSL "kubectl apply -f $WSL_REPO/k8s/$m 2>&1"
+        $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
         if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
         Ok "Manifest $m aplicado"
     }
@@ -193,17 +193,17 @@ if ($K8s) {
     $captureBodyFlag = if ($CaptureBody) { '--set otel.captureBody=true' } else { '' }
 
     Info "Instalando PrecoAPI via Helm..."
-    RunInWSL "helm upgrade --install precoapi $WSL_REPO/helm/precoapi --namespace $NAMESPACE --set db.host=postgres-preco-postgresql $captureBodyFlag --wait --timeout 120s"
+    RunInWSL "helm upgrade --install precoapi $WSL_REPO/infra/helm/precoapi --namespace $NAMESPACE --set db.host=postgres-preco-postgresql $captureBodyFlag --wait --timeout 120s"
     if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar precoapi via Helm" }
     Ok "PrecoAPI instalada"
 
     Info "Instalando ProdutoAPI via Helm..."
-    RunInWSL "helm upgrade --install produtoapi $WSL_REPO/helm/produtoapi --namespace $NAMESPACE --set db.host=postgres-produto-postgresql $captureBodyFlag --wait --timeout 120s"
+    RunInWSL "helm upgrade --install produtoapi $WSL_REPO/infra/helm/produtoapi --namespace $NAMESPACE --set db.host=postgres-produto-postgresql $captureBodyFlag --wait --timeout 120s"
     if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar produtoapi via Helm" }
     Ok "ProdutoAPI instalada"
 
     Info "Instalando MCP Server via Helm..."
-    RunInWSL "helm upgrade --install mcpserver $WSL_REPO/helm/mcpserver --namespace $NAMESPACE --wait --timeout 120s"
+    RunInWSL "helm upgrade --install mcpserver $WSL_REPO/infra/helm/mcpserver --namespace $NAMESPACE --wait --timeout 120s"
     if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar mcpserver via Helm" }
     Ok "MCP Server instalado"
 }
@@ -250,7 +250,7 @@ if (-not $SkipHealthCheck) {
     Info "Executando health check (bash)..."
 
     # Delega para o bash script que ja gerencia os port-forwards corretamente
-    $hcOutput = RunInWSL "bash $WSL_REPO/scripts/sh/k8s/health-check.sh 2>&1"
+    $hcOutput = RunInWSL "bash $WSL_REPO/infra/scripts/sh/k8s/health-check.sh 2>&1"
     $hcOutput | ForEach-Object { Write-Host "  $_" }
 
     # Extrai contadores da linha HEALTH_SUMMARY gerada pelo bash script

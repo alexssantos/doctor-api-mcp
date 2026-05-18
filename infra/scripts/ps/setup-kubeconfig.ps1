@@ -8,7 +8,7 @@
 #Requires -Version 5.1
 
 $ErrorActionPreference = 'Stop'
-$REPO_ROOT    = (Resolve-Path "$PSScriptRoot\..\..").Path
+$REPO_ROOT    = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $driveLetter  = $REPO_ROOT.Substring(0, 1).ToLower()
 $WSL_REPO     = "/mnt/$driveLetter" + ($REPO_ROOT.Substring(2) -replace '\\', '/')
 
@@ -20,7 +20,7 @@ Write-Host "║   mcp-apis  --  setup-kubeconfig             ║" -ForegroundCol
 Write-Host "╚══════════════════════════════════════════════╝" -ForegroundColor White
 Write-Host ""
 
-RunInWSL "bash $WSL_REPO/scripts/sh/setup-kubeconfig-link.sh"
+RunInWSL "bash $WSL_REPO/infra/scripts/sh/setup-kubeconfig-link.sh"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
