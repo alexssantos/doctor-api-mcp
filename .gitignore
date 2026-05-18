@@ -44,5 +44,5 @@ x86/
 
 # Built Visual Studio Code Extensions
 *.vsix
-*/obj
 **/obj
+**/bin
