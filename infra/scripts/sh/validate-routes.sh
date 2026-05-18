@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # validate-routes.sh — end-to-end smoke test (manages its own port-forwards)
 # Usage: bash scripts/validate-routes.sh
 set -euo pipefail
@@ -23,10 +23,10 @@ sleep 6
 check() {
   local label="$1" expected="$2" actual="$3"
   if [[ "$actual" == "$expected" ]]; then
-    echo "  ✅ $label → HTTP $actual"
+    echo "  [OK]  $label → HTTP $actual"
     PASS=$((PASS + 1))
   else
-    echo "  ❌ $label → expected $expected, got $actual"
+    echo "  [FAIL] $label → expected $expected, got $actual"
     FAIL=$((FAIL + 1))
   fi
 }
@@ -43,7 +43,7 @@ PRODUTO=$(curl -s --max-time 10 -X POST "$PRODUTO_URL/api/products" \
 echo "  Body: $PRODUTO"
 PROD_ID=$(echo "$PRODUTO" | tr ',' '\n' | grep '"id"' | head -1 | grep -o '[0-9a-f-]\{36\}')
 echo "  ID extraído: $PROD_ID"
-if [[ -n "$PROD_ID" ]]; then echo "  ✅ Produto criado"; PASS=$((PASS + 1)); else echo "  ❌ Falha ao criar produto"; FAIL=$((FAIL + 1)); fi
+if [[ -n "$PROD_ID" ]]; then echo "  [OK]  Produto criado"; PASS=$((PASS + 1)); else echo "  [FAIL] Falha ao criar produto"; FAIL=$((FAIL + 1)); fi
 
 echo ""
 echo "=== 3. POST /api/prices (para o produto criado) ==="
@@ -51,7 +51,7 @@ PRECO=$(curl -s --max-time 10 -X POST "$PRECO_URL/api/prices" \
   -H "Content-Type: application/json" \
   -d "{\"productId\":\"$PROD_ID\",\"value\":4999.99,\"currency\":\"BRL\"}")
 echo "  Body: $PRECO"
-if echo "$PRECO" | grep -q '"value"'; then echo "  ✅ Preço criado"; PASS=$((PASS + 1)); else echo "  ❌ Falha ao criar preço"; FAIL=$((FAIL + 1)); fi
+if echo "$PRECO" | grep -q '"value"'; then echo "  [OK]  Preço criado"; PASS=$((PASS + 1)); else echo "  [FAIL] Falha ao criar preço"; FAIL=$((FAIL + 1)); fi
 
 echo ""
 echo "=== 4. GET /api/prices/:productId ==="
@@ -63,7 +63,7 @@ echo ""
 echo "=== 5. GET /api/products (lista com preço) ==="
 LISTA=$(curl -s --max-time 10 "$PRODUTO_URL/api/products")
 echo "  Body: $LISTA"
-if echo "$LISTA" | grep -q '"value"'; then echo "  ✅ Price populado no produto"; PASS=$((PASS + 1)); else echo "  ❌ Price null — integração PrecoAPI falhou"; FAIL=$((FAIL + 1)); fi
+if echo "$LISTA" | grep -q '"value"'; then echo "  [OK]  Price populado no produto"; PASS=$((PASS + 1)); else echo "  [FAIL] Price null — integração PrecoAPI falhou"; FAIL=$((FAIL + 1)); fi
 
 echo ""
 echo "=== 6. GET /api/products/:id ==="

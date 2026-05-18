@@ -28,6 +28,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 Selector labels
 */}}
 {{- define "mcpserver.selectorLabels" -}}
+app: {{ include "mcpserver.name" . }}
 app.kubernetes.io/name: {{ include "mcpserver.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

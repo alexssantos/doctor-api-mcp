@@ -28,6 +28,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 Selector labels
 */}}
 {{- define "precoapi.selectorLabels" -}}
+app: {{ include "precoapi.name" . }}
 app.kubernetes.io/name: {{ include "precoapi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

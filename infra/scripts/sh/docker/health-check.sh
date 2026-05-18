@@ -13,9 +13,9 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-pass() { echo -e "  ${GREEN}✅ $1${NC}"; PASS=$((PASS + 1)); }
-fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=$((FAIL + 1)); }
-warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
+pass() { echo -e "  ${GREEN}[OK]  $1${NC}"; PASS=$((PASS + 1)); }
+fail() { echo -e "  ${RED}[FAIL] $1${NC}"; FAIL=$((FAIL + 1)); }
+warn() { echo -e "  ${YELLOW}[WARN] $1${NC}"; }
 section() { echo ""; echo "=== $1 ==="; }
 
 # ─── Portas locais esperadas ───────────────────────────────────────────────────

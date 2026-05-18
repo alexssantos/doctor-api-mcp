@@ -16,9 +16,9 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-pass() { echo -e "  ${GREEN}✅ $1${NC}"; PASS=$((PASS + 1)); }
-fail() { echo -e "  ${RED}❌ $1${NC}"; FAIL=$((FAIL + 1)); }
-warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
+pass() { echo -e "  ${GREEN}[OK]  $1${NC}"; PASS=$((PASS + 1)); }
+fail() { echo -e "  ${RED}[FAIL] $1${NC}"; FAIL=$((FAIL + 1)); }
+warn() { echo -e "  ${YELLOW}[WARN] $1${NC}"; }
 section() { echo ""; echo "=== $1 ==="; }
 
 cleanup() {
@@ -92,31 +92,31 @@ fi
 
 # ─── 4. Pods ──────────────────────────────────────────────────────────────────
 section "4. Pods"
-declare -A EXPECTED_PODS=(
-  ["precoapi"]="precoapi"
-  ["produtoapi"]="produtoapi"
-  ["mcpserver"]="mcpserver"
-  ["postgres-produto"]="postgres-produto"
-  ["postgres-preco"]="postgres-preco"
-  ["jaeger"]="jaeger"
-  ["prometheus"]="prometheus"
-  ["grafana"]="grafana"
-  ["loki"]="loki"
-  ["promtail"]="promtail"
-)
 
-for label in "${!EXPECTED_PODS[@]}"; do
-  app="${EXPECTED_PODS[$label]}"
-  POD_STATUS=$(kubectl get pods -n "${NAMESPACE}" -l "app=${app}" \
-    --no-headers 2>/dev/null | awk '{print $3}' | head -1)
-  READY=$(kubectl get pods -n "${NAMESPACE}" -l "app=${app}" \
-    --no-headers 2>/dev/null | awk '{print $2}' | head -1)
-  if [[ "$POD_STATUS" == "Running" ]]; then
-    pass "Pod $label → Running ($READY)"
-  elif [[ -z "$POD_STATUS" ]]; then
-    fail "Pod $label → nenhum pod encontrado (label app=${app})"
+# Funcao: busca pod por label app=X; se nao encontrar, tenta app.kubernetes.io/instance=X
+get_pod_status() {
+  local name="$1"
+  local result
+  result=$(kubectl get pods -n "${NAMESPACE}" -l "app=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+  if [[ -z "$result" ]]; then
+    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/instance=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+  fi
+  echo "$result"
+}
+
+APPS=(precoapi produtoapi mcpserver postgres-produto postgres-preco jaeger prometheus grafana loki promtail)
+for app in "${APPS[@]}"; do
+  info=$(get_pod_status "$app")
+  if [[ -z "$info" ]]; then
+    fail "Pod $app → nenhum pod encontrado"
   else
-    fail "Pod $label → $POD_STATUS ($READY)"
+    status=$(echo "$info" | awk '{print $1}')
+    ready=$(echo "$info"  | awk '{print $2}')
+    if [[ "$status" == "Running" ]]; then
+      pass "Pod $app → Running ($ready)"
+    else
+      fail "Pod $app → $status ($ready)"
+    fi
   fi
 done
 
@@ -164,6 +164,9 @@ start_pf_pod() {
   local svc="$1" local_port="$2" pod_port="$3"
   local pod
   pod=$(kubectl get pod -n "${NAMESPACE}" -l "app=${svc}" --no-headers 2>/dev/null | awk 'NR==1{print $1}')
+  if [[ -z "$pod" ]]; then
+    pod=$(kubectl get pod -n "${NAMESPACE}" -l "app.kubernetes.io/name=${svc}" --no-headers 2>/dev/null | awk 'NR==1{print $1}')
+  fi
   if [[ -z "$pod" ]]; then
     warn "pf/${svc}: nenhum pod encontrado"
     return

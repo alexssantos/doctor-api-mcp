@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # deploy-k8s.sh — Deploy mcp-apis to k3d via kubectl raw manifests (modo alternativo)
 # Usage: bash scripts/sh/deploy-k8s.sh [--capture-body]
 #
@@ -19,20 +19,20 @@ for arg in "$@"; do
 done
 
 # ─── Prerequisites ─────────────────────────────────────────────────────────────
-echo "🔍 Checking prerequisites..."
+echo "[CHK] Checking prerequisites..."
 for cmd in k3d kubectl docker; do
   if ! command -v "$cmd" &>/dev/null; then
-    echo "❌ '$cmd' not found. Please install it first."
+    echo "[FAIL] '$cmd' not found. Please install it first."
     exit 1
   fi
 done
-echo "✅ All prerequisites found."
+echo "[OK]  All prerequisites found."
 
 # ─── k3d cluster ──────────────────────────────────────────────────────────────
 if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -q "^${CLUSTER_NAME}$"; then
   echo "ℹ️  k3d cluster '${CLUSTER_NAME}' already exists — skipping creation."
 else
-  echo "🚀 Creating k3d cluster '${CLUSTER_NAME}'..."
+  echo ">>> Creating k3d cluster '${CLUSTER_NAME}'..."
   k3d cluster create "${CLUSTER_NAME}" \
     --port "8080:80@loadbalancer" \
     --port "8443:443@loadbalancer" \
@@ -42,7 +42,7 @@ fi
 kubectl config use-context "k3d-${CLUSTER_NAME}"
 
 # ─── Nginx ingress controller ──────────────────────────────────────────────────
-echo "🌐 Installing nginx ingress controller..."
+echo "[NET] Installing nginx ingress controller..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
 
 echo "⏳ Waiting for ingress controller to be ready..."
@@ -70,11 +70,11 @@ docker build \
   -t mcpserver:latest \
   "${REPO_ROOT}"
 
-echo "📦 Loading images into k3d cluster..."
+echo "[PKG] Loading images into k3d cluster..."
 k3d image import precoapi:latest produtoapi:latest mcpserver:latest --cluster "${CLUSTER_NAME}"
 
 # ─── Apply manifests (ordered) ─────────────────────────────────────────────────
-echo "📋 Applying Kubernetes manifests..."
+echo "[LIST] Applying Kubernetes manifests..."
 
 kubectl apply -f "${REPO_ROOT}/infra/k8s/namespace.yaml"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/postgres-produto/"
@@ -109,7 +109,7 @@ kubectl rollout status deployment/produtoapi        -n "${NAMESPACE}" --timeout=
 # ─── Done ──────────────────────────────────────────────────────────────────────
 cat <<EOF
 
-✅ Deploy complete!
+[OK]  Deploy complete!
 
 � Run the port-forward script to access the services (no hosts file needed):
    bash infra/scripts/sh/port-forward.sh

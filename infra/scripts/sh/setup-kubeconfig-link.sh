@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # setup-kubeconfig-link.sh — One-time setup: symlink WSL ~/.kube/config → Windows path
 #
 # After this, every k3d/kubectl write in WSL is instantly visible to Lens (and
@@ -19,7 +19,7 @@ WIN_USER=$(ls /mnt/c/Users/ 2>/dev/null \
     done)
 
 if [[ -z "$WIN_USER" ]]; then
-  echo "❌ Could not detect Windows username under /mnt/c/Users/."
+  echo "[FAIL] Could not detect Windows username under /mnt/c/Users/."
   exit 1
 fi
 
@@ -36,10 +36,10 @@ echo ""
 if [[ -L "$WSL_KUBE" ]]; then
   CURRENT_TARGET=$(readlink "$WSL_KUBE")
   if [[ "$CURRENT_TARGET" == "$WIN_KUBE" ]]; then
-    echo "✅ Symlink already in place: ${WSL_KUBE} → ${WIN_KUBE}"
+    echo "[OK]  Symlink already in place: ${WSL_KUBE} → ${WIN_KUBE}"
     exit 0
   fi
-  echo "⚠️  ~/.kube/config is a symlink pointing to: ${CURRENT_TARGET}"
+  echo "[WARN]  ~/.kube/config is a symlink pointing to: ${CURRENT_TARGET}"
   read -rp "   Replace it? [y/N] " reply
   [[ "$reply" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
   rm "$WSL_KUBE"
@@ -71,7 +71,7 @@ fi
 ln -sf "$WIN_KUBE" "$WSL_KUBE"
 
 echo ""
-echo "✅ Done!  ${WSL_KUBE}"
+echo "[OK]  Done!  ${WSL_KUBE}"
 echo "          └─ symlink → ${WIN_KUBE}"
 echo ""
 echo "   From now on every k3d/kubectl operation in WSL writes directly to the"
