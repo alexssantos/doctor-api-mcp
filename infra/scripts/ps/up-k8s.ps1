@@ -86,6 +86,21 @@ $null = RunInWSL "kubectl config use-context $CLUSTER_CONTEXT 2>&1"
 if ($LASTEXITCODE -ne 0) { Err "Falha ao definir contexto kubectl '$CLUSTER_CONTEXT'" }
 Ok "Contexto kubectl: $CLUSTER_CONTEXT"
 
+# Verificar conectividade com o API server (retry 3x — porta muda apos restart do WSL)
+Info "Verificando conectividade com o API server..."
+$connected = $false
+for ($i = 1; $i -le 3; $i++) {
+    $nodes = RunInWSL "kubectl get nodes --no-headers 2>/dev/null"
+    if ($LASTEXITCODE -eq 0 -and $nodes) { $connected = $true; break }
+    if ($i -lt 3) {
+        Warn "API server nao responde (tentativa $i/3) — re-sincronizando kubeconfig..."
+        RunInWSL "bash $WSL_REPO/infra/scripts/sh/sync-kubeconfig.sh $CLUSTER_NAME"
+        RunInWSL "kubectl config use-context $CLUSTER_CONTEXT 2>/dev/null" | Out-Null
+        Start-Sleep -Seconds 3
+    }
+}
+if (-not $connected) { Err "Nao foi possivel conectar ao API server. Execute 'k3d cluster list' no WSL para verificar o cluster." }
+
 # ─── 2. Nginx Ingress Controller ──────────────────────────────────────────────
 Banner "2. Nginx Ingress Controller"
 $ingressNs = RunInWSL "kubectl get namespace ingress-nginx --no-headers 2>/dev/null"
@@ -151,8 +166,11 @@ $manifests = @(
     'produtoapi'
 )
 foreach ($m in $manifests) {
-    $null = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
+    $out = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
+    if ($LASTEXITCODE -ne 0) {
+        $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        Err "Falha ao aplicar manifests de '$m'"
+    }
     Ok "Manifest $m aplicado"
 }
 

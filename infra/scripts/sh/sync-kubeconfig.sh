@@ -33,8 +33,8 @@ fi
 mkdir -p "$(dirname "$WIN_KUBE")"
 
 if [[ -s "$WIN_KUBE" ]]; then
-  # Mesclar com kubeconfig existente preservando outros clusters
-  KUBECONFIG="${WIN_KUBE}:${TMPCONFIG}" kubectl config view --flatten > "${TMPCONFIG}.merged" 2>/dev/null
+  # Novo config do k3d primeiro para sobrescrever entradas com mesmo nome
+  KUBECONFIG="${TMPCONFIG}:${WIN_KUBE}" kubectl config view --flatten > "${TMPCONFIG}.merged" 2>/dev/null
   if [[ -s "${TMPCONFIG}.merged" ]]; then
     cat "${TMPCONFIG}.merged" > "$WIN_KUBE"
   else
