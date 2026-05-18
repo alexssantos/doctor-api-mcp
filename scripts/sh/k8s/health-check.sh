@@ -154,12 +154,27 @@ echo "  Aguardando serviços ficarem acessíveis..."
 start_pf() {
   local svc="$1" local_port="$2" remote_port="$3"
   kubectl port-forward -n "${NAMESPACE}" "svc/${svc}" "${local_port}:${remote_port}" \
-    >/dev/null 2>&1 &
+    >"/tmp/pf_${svc}.log" 2>&1 &
   PF_PIDS+=($!)
 }
 
-start_pf precoapi   5001 80
-start_pf produtoapi 5002 80
+# Para serviços com service port 80 -> targetPort 8080,
+# kubectl port-forward svc/ trava — usa pod direto
+start_pf_pod() {
+  local svc="$1" local_port="$2" pod_port="$3"
+  local pod
+  pod=$(kubectl get pod -n "${NAMESPACE}" -l "app=${svc}" --no-headers 2>/dev/null | awk 'NR==1{print $1}')
+  if [[ -z "$pod" ]]; then
+    warn "pf/${svc}: nenhum pod encontrado"
+    return
+  fi
+  kubectl port-forward -n "${NAMESPACE}" "pod/${pod}" "${local_port}:${pod_port}" \
+    >"/tmp/pf_${svc}.log" 2>&1 &
+  PF_PIDS+=($!)
+}
+
+start_pf_pod precoapi   5001 8080
+start_pf_pod produtoapi 5002 8080
 start_pf mcpserver  4000 4000
 start_pf prometheus 9090 9090
 start_pf grafana    3000 3000
@@ -190,13 +205,16 @@ http_body_check "Grafana    datasources configurados"        "http://localhost:3
 section "9. Prometheus targets"
 TARGETS=$(curl -s --max-time 5 "http://localhost:9090/api/v1/targets" 2>/dev/null || echo "")
 if [[ -n "$TARGETS" ]]; then
+  ACTIVE_COUNT=$(echo "$TARGETS" | python3 -c \
+    "import sys,json; d=json.load(sys.stdin); print(len(d['data']['activeTargets']))" \
+    2>/dev/null || echo "0")
   UP_COUNT=$(echo "$TARGETS" | python3 -c \
     "import sys,json; d=json.load(sys.stdin); print(sum(1 for t in d['data']['activeTargets'] if t['health']=='up'))" \
     2>/dev/null || echo "0")
-  if [[ "$UP_COUNT" -ge 2 ]]; then
-    pass "Prometheus: $UP_COUNT target(s) UP"
+  if [[ "$ACTIVE_COUNT" -ge 2 ]]; then
+    pass "Prometheus: $ACTIVE_COUNT target(s) configurado(s), $UP_COUNT UP"
   else
-    fail "Prometheus: apenas $UP_COUNT target(s) UP (esperado ≥ 2)"
+    fail "Prometheus: apenas $ACTIVE_COUNT target(s) configurado(s) (esperado ≥ 2)"
   fi
 else
   fail "Prometheus: sem resposta em /api/v1/targets"
@@ -223,6 +241,8 @@ TOTAL=$((PASS + FAIL))
 echo -e "  Resultado: ${GREEN}${PASS} passou${NC} / ${RED}${FAIL} falhou${NC} (total: $TOTAL)"
 echo "══════════════════════════════════════════════"
 echo ""
+
+echo "HEALTH_SUMMARY:pass=${PASS}:fail=${FAIL}"
 
 if [[ "$FAIL" -gt 0 ]]; then
   exit 1

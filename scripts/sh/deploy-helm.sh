@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# deploy-helm.sh — Deploy mcp-apis to k3d using Helm charts
-# Usage: bash scripts/deploy-helm.sh [--capture-body] [--image-tag <tag>]
+# deploy-helm.sh — Deploy mcp-apis to k3d usando Helm (modo PADRAO)
+# Usage: bash scripts/sh/deploy-helm.sh [--capture-body] [--image-tag <tag>]
+#
+# Para deploy via kubectl raw manifests, use: bash scripts/sh/deploy-k8s.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"

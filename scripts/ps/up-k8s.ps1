@@ -3,14 +3,16 @@
 # Ao final executa health-check completo com port-forwards.
 #
 # Uso:
-#   .\scripts\ps\up-k8s.ps1                   # deploy + health-check
-#   .\scripts\ps\up-k8s.ps1 -SkipBuild        # pula build das imagens Docker
+#   .\scripts\ps\up-k8s.ps1                   # deploy via Helm (padrao)
+#   .\scripts\ps\up-k8s.ps1 -K8s             # deploy via kubectl raw manifests
+#   .\scripts\ps\up-k8s.ps1 -Build            # executa build das imagens Docker
 #   .\scripts\ps\up-k8s.ps1 -SkipHealthCheck  # pula verificacao final
 #   .\scripts\ps\up-k8s.ps1 -CaptureBody      # habilita captura de body no OTEL
 #Requires -Version 5.1
 param(
+    [switch]$K8s,
+    [switch]$Build,
     [switch]$CaptureBody,
-    [switch]$SkipBuild,
     [switch]$SkipHealthCheck
 )
 
@@ -25,27 +27,24 @@ $WSL_REPO        = "/mnt/$driveLetter" + ($REPO_ROOT.Substring(2) -replace '\\',
 
 $script:PASS     = 0
 $script:FAIL     = 0
-$script:PfProcs  = @()
 
 function RunInWSL([string]$Cmd) { wsl.exe -- bash -lc $Cmd }
 function Banner($msg) { Write-Host ""; Write-Host "══► $msg" -ForegroundColor Cyan }
 function Ok($msg)     { Write-Host "    [OK]   $msg" -ForegroundColor Green;  $script:PASS++ }
 function Warn($msg)   { Write-Host "    [WARN] $msg" -ForegroundColor Yellow }
 function Info($msg)   { Write-Host "    ...    $msg" -ForegroundColor DarkGray }
-function Err($msg)    { Write-Host ""; Write-Host "[ERRO] $msg`n" -ForegroundColor Red; Stop-PF; exit 1 }
+function Err($msg)    { Write-Host ""; Write-Host "[ERRO] $msg`n" -ForegroundColor Red; exit 1 }
 function Pass($msg)   { Write-Host "    [PASS] $msg" -ForegroundColor Green;  $script:PASS++ }
 function Fail($msg)   { Write-Host "    [FAIL] $msg" -ForegroundColor Red;    $script:FAIL++ }
-
-function Stop-PF {
-    foreach ($p in $script:PfProcs) { try { $p.Kill() } catch {} }
-}
-
-Register-EngineEvent PowerShell.Exiting -Action { Stop-PF } | Out-Null
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════╗" -ForegroundColor White
 Write-Host "║      mcp-apis  --  up-k8s                    ║" -ForegroundColor White
 Write-Host "╚══════════════════════════════════════════════╝" -ForegroundColor White
+
+$deployMode = if ($K8s) { 'k8s' } else { 'helm' }
+Write-Host "  Modo de deploy: " -NoNewline -ForegroundColor White
+Write-Host $deployMode.ToUpper() -ForegroundColor $(if ($K8s) { 'Yellow' } else { 'Cyan' })
 
 # ─── 0. Validar ambiente WSL (Windows only) ───────────────────────────────────
 Banner "0. Validando ambiente WSL"
@@ -87,11 +86,6 @@ $null = RunInWSL "kubectl config use-context $CLUSTER_CONTEXT 2>&1"
 if ($LASTEXITCODE -ne 0) { Err "Falha ao definir contexto kubectl '$CLUSTER_CONTEXT'" }
 Ok "Contexto kubectl: $CLUSTER_CONTEXT"
 
-# Sincronizar kubeconfig com Windows (symlink permanente — idempotente)
-Info "Sincronizando kubeconfig com Windows..."
-RunInWSL "bash $WSL_REPO/scripts/sh/setup-kubeconfig-link.sh"
-Ok "Kubeconfig sincronizado com Windows (~/.kube/config)"
-
 # ─── 2. Nginx Ingress Controller ──────────────────────────────────────────────
 Banner "2. Nginx Ingress Controller"
 $ingressNs = RunInWSL "kubectl get namespace ingress-nginx --no-headers 2>/dev/null"
@@ -113,7 +107,7 @@ if ($ingressNs) {
 }
 
 # ─── 3. Build e import das imagens Docker ─────────────────────────────────────
-if (-not $SkipBuild) {
+if ($Build) {
     Banner "3. Imagens Docker"
     $images = @(
         @{ Name = 'precoapi:latest';   Dockerfile = "src\Services\PrecoAPI\Dockerfile" }
@@ -135,55 +129,113 @@ if (-not $SkipBuild) {
     Ok "Imagens importadas para '$CLUSTER_NAME'"
 } else {
     Banner "3. Imagens Docker"
-    Info "[-SkipBuild] pulando build das imagens Docker"
+    Info "[padrao] pulando build das imagens Docker — use -Build para construir"
 }
 
-# ─── 4. Namespace e Manifests ─────────────────────────────────────────────────
-Banner "4. Namespace e Manifests Kubernetes"
+# ─── 4. Namespace e Deploy ────────────────────────────────────────────────────
+Banner "4. Namespace e Deploy ($deployMode)"
 
 RunInWSL "kubectl apply -f $WSL_REPO/k8s/namespace.yaml"
 Ok "Namespace '$NAMESPACE'"
 
-$manifests = @(
-    'postgres-produto'
-    'postgres-preco'
-    'jaeger'
-    'prometheus'
-    'loki'
-    'promtail'
-    'grafana'
-    'mcpserver'
-    'precoapi'
-    'produtoapi'
-)
-foreach ($m in $manifests) {
-    $null = RunInWSL "kubectl apply -f $WSL_REPO/k8s/$m 2>&1"
-    if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
-    Ok "Manifest $m aplicado"
-}
+if ($K8s) {
+    # ── Raw kubectl manifests ──────────────────────────────────────────────────
+    $manifests = @(
+        'postgres-produto'
+        'postgres-preco'
+        'jaeger'
+        'prometheus'
+        'loki'
+        'promtail'
+        'grafana'
+        'mcpserver'
+        'precoapi'
+        'produtoapi'
+    )
+    foreach ($m in $manifests) {
+        $null = RunInWSL "kubectl apply -f $WSL_REPO/k8s/$m 2>&1"
+        if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
+        Ok "Manifest $m aplicado"
+    }
 
-if ($CaptureBody) {
-    $patchJson = '{"data":{"Otel__CaptureBody":"true"}}'
-    Info "Habilitando CaptureBody no OTEL..."
-    RunInWSL "kubectl patch configmap precoapi-config   -n $NAMESPACE --type merge -p '$patchJson'"
-    RunInWSL "kubectl patch configmap produtoapi-config -n $NAMESPACE --type merge -p '$patchJson'"
-    Ok "CaptureBody habilitado"
+    if ($CaptureBody) {
+        $patchJson = '{"data":{"Otel__CaptureBody":"true"}}'
+        Info "Habilitando CaptureBody no OTEL..."
+        RunInWSL "kubectl patch configmap precoapi-config   -n $NAMESPACE --type merge -p '$patchJson'"
+        RunInWSL "kubectl patch configmap produtoapi-config -n $NAMESPACE --type merge -p '$patchJson'"
+        Ok "CaptureBody habilitado"
+    }
+} else {
+    # ── Helm ───────────────────────────────────────────────────────────────────
+    Info "Adicionando repositorio Bitnami..."
+    RunInWSL "helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true"
+    RunInWSL "helm repo update"
+    Ok "Repositorio Bitnami atualizado"
+
+    Info "Instalando PostgreSQL para ProdutoDB..."
+    RunInWSL "helm upgrade --install postgres-produto bitnami/postgresql --namespace $NAMESPACE --set auth.username=postgres --set auth.password=postgres --set auth.database=produto_db --wait --timeout 120s"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar postgres-produto via Helm" }
+    Ok "PostgreSQL produto instalado"
+
+    Info "Instalando PostgreSQL para PrecoDB..."
+    RunInWSL "helm upgrade --install postgres-preco bitnami/postgresql --namespace $NAMESPACE --set auth.username=postgres --set auth.password=postgres --set auth.database=preco_db --wait --timeout 120s"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar postgres-preco via Helm" }
+    Ok "PostgreSQL preco instalado"
+
+    # Observability stack permanece via kubectl (sem Helm chart dedicado)
+    $obsManifests = @('jaeger', 'prometheus', 'loki', 'promtail', 'grafana')
+    foreach ($m in $obsManifests) {
+        $null = RunInWSL "kubectl apply -f $WSL_REPO/k8s/$m 2>&1"
+        if ($LASTEXITCODE -ne 0) { Err "Falha ao aplicar manifests de '$m'" }
+        Ok "Manifest $m aplicado"
+    }
+
+    $captureBodyFlag = if ($CaptureBody) { '--set otel.captureBody=true' } else { '' }
+
+    Info "Instalando PrecoAPI via Helm..."
+    RunInWSL "helm upgrade --install precoapi $WSL_REPO/helm/precoapi --namespace $NAMESPACE --set db.host=postgres-preco-postgresql $captureBodyFlag --wait --timeout 120s"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar precoapi via Helm" }
+    Ok "PrecoAPI instalada"
+
+    Info "Instalando ProdutoAPI via Helm..."
+    RunInWSL "helm upgrade --install produtoapi $WSL_REPO/helm/produtoapi --namespace $NAMESPACE --set db.host=postgres-produto-postgresql $captureBodyFlag --wait --timeout 120s"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar produtoapi via Helm" }
+    Ok "ProdutoAPI instalada"
+
+    Info "Instalando MCP Server via Helm..."
+    RunInWSL "helm upgrade --install mcpserver $WSL_REPO/helm/mcpserver --namespace $NAMESPACE --wait --timeout 120s"
+    if ($LASTEXITCODE -ne 0) { Err "Falha ao instalar mcpserver via Helm" }
+    Ok "MCP Server instalado"
 }
 
 # ─── 5. Aguardar rollouts ─────────────────────────────────────────────────────
 Banner "5. Aguardando rollouts"
 
-$rollouts = @(
-    @{ Kind = 'statefulset'; Name = 'postgres-produto' }
-    @{ Kind = 'statefulset'; Name = 'postgres-preco' }
-    @{ Kind = 'deployment';  Name = 'jaeger' }
-    @{ Kind = 'deployment';  Name = 'prometheus' }
-    @{ Kind = 'deployment';  Name = 'loki' }
-    @{ Kind = 'deployment';  Name = 'grafana' }
-    @{ Kind = 'deployment';  Name = 'mcpserver' }
-    @{ Kind = 'deployment';  Name = 'precoapi' }
-    @{ Kind = 'deployment';  Name = 'produtoapi' }
-)
+if ($K8s) {
+    $rollouts = @(
+        @{ Kind = 'statefulset'; Name = 'postgres-produto' }
+        @{ Kind = 'statefulset'; Name = 'postgres-preco' }
+        @{ Kind = 'deployment';  Name = 'jaeger' }
+        @{ Kind = 'deployment';  Name = 'prometheus' }
+        @{ Kind = 'deployment';  Name = 'loki' }
+        @{ Kind = 'deployment';  Name = 'grafana' }
+        @{ Kind = 'deployment';  Name = 'mcpserver' }
+        @{ Kind = 'deployment';  Name = 'precoapi' }
+        @{ Kind = 'deployment';  Name = 'produtoapi' }
+    )
+} else {
+    $rollouts = @(
+        @{ Kind = 'statefulset'; Name = 'postgres-produto-postgresql' }
+        @{ Kind = 'statefulset'; Name = 'postgres-preco-postgresql' }
+        @{ Kind = 'deployment';  Name = 'jaeger' }
+        @{ Kind = 'deployment';  Name = 'prometheus' }
+        @{ Kind = 'deployment';  Name = 'loki' }
+        @{ Kind = 'deployment';  Name = 'grafana' }
+        @{ Kind = 'deployment';  Name = 'mcpserver' }
+        @{ Kind = 'deployment';  Name = 'precoapi' }
+        @{ Kind = 'deployment';  Name = 'produtoapi' }
+    )
+}
 
 foreach ($r in $rollouts) {
     Info "Aguardando $($r.Kind)/$($r.Name)..."
@@ -195,121 +247,18 @@ foreach ($r in $rollouts) {
 # ─── 6. Health Check ──────────────────────────────────────────────────────────
 if (-not $SkipHealthCheck) {
     Banner "6. Health Check"
+    Info "Executando health check (bash)..."
 
-    # Port-forwards
-    Info "Iniciando port-forwards..."
-    $pfMap = @(
-        @{ Svc = 'precoapi';   Local = 5001; Remote = 80 }
-        @{ Svc = 'produtoapi'; Local = 5002; Remote = 80 }
-        @{ Svc = 'mcpserver';  Local = 4000; Remote = 4000 }
-        @{ Svc = 'prometheus'; Local = 9090; Remote = 9090 }
-        @{ Svc = 'grafana';    Local = 3000; Remote = 3000 }
-        @{ Svc = 'jaeger';     Local = 16686; Remote = 16686 }
-    )
-    foreach ($pf in $pfMap) {
-        $pfCmd = "kubectl port-forward -n $NAMESPACE svc/$($pf.Svc) $($pf.Local):$($pf.Remote)"
-        $proc = Start-Process wsl.exe `
-            -ArgumentList @('--', 'bash', '-lc', $pfCmd) `
-            -PassThru -WindowStyle Hidden -ErrorAction SilentlyContinue
-        if ($proc) { $script:PfProcs += $proc }
+    # Delega para o bash script que ja gerencia os port-forwards corretamente
+    $hcOutput = RunInWSL "bash $WSL_REPO/scripts/sh/k8s/health-check.sh 2>&1"
+    $hcOutput | ForEach-Object { Write-Host "  $_" }
+
+    # Extrai contadores da linha HEALTH_SUMMARY gerada pelo bash script
+    $summaryLine = $hcOutput | Where-Object { $_ -match '^HEALTH_SUMMARY:' }
+    if ($summaryLine -match 'pass=(\d+):fail=(\d+)') {
+        $script:PASS += [int]$Matches[1]
+        $script:FAIL += [int]$Matches[2]
     }
-    Start-Sleep -Seconds 6
-    Ok "$($script:PfProcs.Count) port-forward(s) iniciados"
-
-    # Funcao helper HTTP
-    function Test-Http {
-        param([string]$Label, [string]$Url, [int]$Expected = 200)
-        try {
-            $r = Invoke-WebRequest -Uri $Url -Method GET -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-            if ($r.StatusCode -eq $Expected) { Pass "$Label -> HTTP $($r.StatusCode)" }
-            else                             { Fail "$Label -> esperado $Expected, obtido $($r.StatusCode)" }
-        } catch {
-            $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
-            if ($code -eq $Expected) { Pass "$Label -> HTTP $code" }
-            else                     { Fail "$Label -> sem resposta ($Url)" }
-        }
-    }
-
-    function Test-HttpBody {
-        param([string]$Label, [string]$Url, [string]$Pattern)
-        try {
-            $body = (Invoke-WebRequest -Uri $Url -Method GET -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop).Content
-            if ($body -match $Pattern) { Pass $Label }
-            else                       { Fail "$Label (padrao '$Pattern' nao encontrado)" }
-        } catch {
-            Fail "$Label (sem resposta de $Url)"
-        }
-    }
-
-    # Pods e deployments
-    Write-Host ""
-    Write-Host "  --- Pods ---" -ForegroundColor DarkGray
-    $appLabels = @(
-        'precoapi','produtoapi','mcpserver',
-        'postgres-produto','postgres-preco',
-        'jaeger','prometheus','grafana','loki','promtail'
-    )
-    foreach ($app in $appLabels) {
-        $rows = RunInWSL "kubectl get pods -n $NAMESPACE -l 'app=$app' --no-headers 2>/dev/null"
-        if ($rows) {
-            $cols   = ($rows -split '\s+')
-            $status = $cols[2]; $ready = $cols[1]
-            if ($status -eq 'Running') { Pass "Pod $app -> Running ($ready)" }
-            else                       { Fail "Pod $app -> $status ($ready)" }
-        } else {
-            Fail "Pod $app -> nenhum pod encontrado"
-        }
-    }
-
-    # Endpoints HTTP
-    Write-Host ""
-    Write-Host "  --- Endpoints HTTP ---" -ForegroundColor DarkGray
-    Test-Http "PrecoAPI   /scalar/v1"         "http://localhost:5001/scalar/v1"
-    Test-Http "PrecoAPI   /metrics"           "http://localhost:5001/metrics"
-    Test-Http "ProdutoAPI /scalar/v1"         "http://localhost:5002/scalar/v1"
-    Test-Http "ProdutoAPI /metrics"           "http://localhost:5002/metrics"
-    Test-Http "McpServer  /health"            "http://localhost:4000/health"
-    Test-Http "Prometheus /api/v1/status"     "http://localhost:9090/api/v1/status/config"
-    Test-Http "Grafana    /api/health"        "http://localhost:3000/api/health"
-    Test-Http "Jaeger     UI"                 "http://localhost:16686"
-
-    # Conteudo
-    Write-Host ""
-    Write-Host "  --- Conteudo ---" -ForegroundColor DarkGray
-    Test-HttpBody "PrecoAPI   /metrics 'http_server'"   "http://localhost:5001/metrics"       "http_server"
-    Test-HttpBody "ProdutoAPI /metrics 'http_server'"   "http://localhost:5002/metrics"       "http_server"
-    Test-HttpBody "McpServer  /health 'healthy'"        "http://localhost:4000/health"        "healthy"
-    Test-HttpBody "Grafana    /api/health 'ok'"         "http://localhost:3000/api/health"    '"ok"'
-
-    # MCP protocolo
-    Write-Host ""
-    Write-Host "  --- MCP Protocolo ---" -ForegroundColor DarkGray
-    try {
-        $body = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"up-k8s","version":"1.0"}}}'
-        $resp = Invoke-RestMethod -Uri "http://localhost:4000/" -Method POST -Body $body `
-            -ContentType 'application/json' `
-            -Headers @{ Accept = 'application/json, text/event-stream' } `
-            -TimeoutSec 5 -ErrorAction Stop
-        $json = $resp | ConvertTo-Json -Depth 5
-        if ($json -match 'mcp-apis-server') { Pass "MCP initialize -> serverInfo correto" }
-        else                                { Fail "MCP initialize -> resposta inesperada" }
-    } catch {
-        Fail "MCP initialize -> sem resposta: $_"
-    }
-
-    # Prometheus targets
-    Write-Host ""
-    Write-Host "  --- Prometheus ---" -ForegroundColor DarkGray
-    try {
-        $targets = Invoke-RestMethod -Uri "http://localhost:9090/api/v1/targets" -TimeoutSec 5 -ErrorAction Stop
-        $upCount = ($targets.data.activeTargets | Where-Object { $_.health -eq 'up' } | Measure-Object).Count
-        if ($upCount -ge 2) { Pass "Prometheus: $upCount target(s) UP" }
-        else                { Fail "Prometheus: apenas $upCount target(s) UP (esperado >= 2)" }
-    } catch {
-        Fail "Prometheus: sem resposta em /api/v1/targets"
-    }
-
-    Stop-PF
 } else {
     Banner "6. Health Check"
     Info "[-SkipHealthCheck] pulando verificacao de endpoints"

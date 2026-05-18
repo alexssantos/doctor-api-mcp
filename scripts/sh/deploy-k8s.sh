@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# deploy-k8s.sh — Deploy mcp-apis to k3d using plain kubectl manifests
-# Usage: bash scripts/deploy-k8s.sh [--capture-body]
+# deploy-k8s.sh — Deploy mcp-apis to k3d via kubectl raw manifests (modo alternativo)
+# Usage: bash scripts/sh/deploy-k8s.sh [--capture-body]
+#
+# Para o deploy padrao com Helm, use: bash scripts/sh/deploy-helm.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../." && pwd)"

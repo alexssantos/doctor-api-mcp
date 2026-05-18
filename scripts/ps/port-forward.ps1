@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $NAMESPACE       = 'mcp-apis'
 $CLUSTER_CONTEXT = 'k3d-mcp-apis'
 
-kubectl config use-context $CLUSTER_CONTEXT 2>$null | Out-Null
+wsl.exe -- bash -lc "kubectl config use-context $CLUSTER_CONTEXT >/dev/null 2>&1"
 
 Write-Host "Iniciando port-forwards (Ctrl+C para parar todos)..." -ForegroundColor Cyan
 Write-Host ""
@@ -20,40 +20,27 @@ Write-Host "   Prometheus -> http://localhost:9090"
 Write-Host "   Grafana    -> http://localhost:3000  (admin/admin)"
 Write-Host "   MCP Server -> http://localhost:4000"
 Write-Host ""
-
-$procs = @()
-
-function Start-PF([string]$svc, [string]$ports) {
-    Start-Process kubectl `
-        -ArgumentList "port-forward -n $NAMESPACE svc/$svc $ports" `
-        -PassThru -WindowStyle Hidden
-}
-
-$procs += Start-PF "precoapi"   "5001:80"
-$procs += Start-PF "produtoapi" "5002:80"
-$procs += Start-PF "jaeger"     "16686:16686"
-$procs += Start-PF "prometheus" "9090:9090"
-$procs += Start-PF "grafana"    "3000:3000"
-$procs += Start-PF "mcpserver"  "4000:4000"
-
 Write-Host "Port-forwards ativos. Aguardando Ctrl+C..." -ForegroundColor DarkGray
 
+# precoapi/produtoapi usam pod direto (kubectl port-forward svc/ com porta 80 trava no kubectl v1.36)
+# Outros servicos usam svc/ normalmente
+$bashCmd = @(
+    "PRECOAPI_POD=`$(kubectl get pod -n $NAMESPACE -l app=precoapi --no-headers 2>/dev/null | awk 'NR==1{print `$1}')"
+    "PRODUTOAPI_POD=`$(kubectl get pod -n $NAMESPACE -l app=produtoapi --no-headers 2>/dev/null | awk 'NR==1{print `$1}')"
+    "kubectl port-forward -n $NAMESPACE pod/`$PRECOAPI_POD   5001:8080    >/tmp/pf_precoapi.log   2>&1"
+    "kubectl port-forward -n $NAMESPACE pod/`$PRODUTOAPI_POD 5002:8080    >/tmp/pf_produtoapi.log 2>&1"
+    "kubectl port-forward -n $NAMESPACE svc/jaeger     16686:16686  >/tmp/pf_jaeger.log     2>&1"
+    "kubectl port-forward -n $NAMESPACE svc/prometheus 9090:9090    >/tmp/pf_prometheus.log 2>&1"
+    "kubectl port-forward -n $NAMESPACE svc/grafana    3000:3000    >/tmp/pf_grafana.log    2>&1"
+    "kubectl port-forward -n $NAMESPACE svc/mcpserver  4000:4000    >/tmp/pf_mcpserver.log  2>&1"
+) -join ' & '
+$bashCmd = "$bashCmd & wait"
+
 try {
-    # Mantem o script rodando ate Ctrl+C
-    while ($true) {
-        Start-Sleep -Seconds 5
-        # Reinicia processos que morreram
-        foreach ($p in $procs) {
-            if ($p.HasExited) {
-                Write-Host "  Port-forward '$($p.StartInfo.Arguments)' encerrou inesperadamente." -ForegroundColor Yellow
-            }
-        }
-    }
+    wsl.exe -- bash -lc $bashCmd
 } finally {
     Write-Host ""
     Write-Host "Encerrando port-forwards..." -ForegroundColor Yellow
-    foreach ($p in $procs) {
-        try { $p.Kill() } catch {}
-    }
+    wsl.exe -- bash -lc "pkill -f 'kubectl port-forward' 2>/dev/null || true" | Out-Null
     Write-Host "Port-forwards encerrados." -ForegroundColor Green
 }
