@@ -91,10 +91,13 @@ public class KubernetesService : IKubernetesCollector
         foreach (var svc in services.Items)
         {
             var name = svc.Metadata.Name;
+            var ns = svc.Metadata.NamespaceProperty ?? _namespace;
+            // Prefer explicit annotation; fall back to FQDN so the URL is always
+            // resolvable from any namespace within the cluster.
             var baseUrl = svc.Metadata.Annotations != null
                 && svc.Metadata.Annotations.TryGetValue("mcp-apis/base-url", out var url)
                 ? url
-                : $"http://{name}";
+                : $"http://{name}.{ns}.svc.cluster.local";
             result[name] = baseUrl;
         }
         return result;

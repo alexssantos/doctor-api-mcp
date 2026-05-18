@@ -6,7 +6,7 @@ metadata:
   labels:
     mcp-apis/indexed: "true"
   annotations:
-    mcp-apis/base-url: "http://produtoapi"
+    mcp-apis/base-url: "http://produtoapi.mcp-apis.svc.cluster.local"
 spec:
   selector:
     app: produtoapi

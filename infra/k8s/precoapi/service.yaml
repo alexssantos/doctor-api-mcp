@@ -6,7 +6,7 @@ metadata:
   labels:
     mcp-apis/indexed: "true"
   annotations:
-    mcp-apis/base-url: "http://precoapi"
+    mcp-apis/base-url: "http://precoapi.mcp-apis.svc.cluster.local"
 spec:
   selector:
     app: precoapi

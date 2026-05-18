@@ -6,7 +6,9 @@ metadata:
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
   # Data sources
-  DataSources__Jaeger__BaseUrl: "http://jaeger:16686"
+  # Use FQDNs (http://<service>.<namespace>.svc.cluster.local) to support
+  # services in any namespace — not just the one the MCP Server lives in.
+  DataSources__Jaeger__BaseUrl: "http://jaeger.mcp-apis.svc.cluster.local:16686"
   DataSources__Kubernetes__Namespace: "mcp-apis"
   # OpenAPI spec paths probed in order — first 200 response wins
   DataSources__OpenApiSpecPaths__0: "/openapi/v1.json"
@@ -14,9 +16,11 @@ data:
   DataSources__OpenApiSpecPaths__2: "/swagger/v1/swagger.json"
   DataSources__OpenApiSpecPaths__3: "/api/v1/openapi.json"
   DataSources__OpenApiSpecPaths__4: "/api-docs/v1.json"
-  # Indexed services (used when Discovery__Mode is Config or Both)
-  Services__precoapi: "http://precoapi"
-  Services__produtoapi: "http://produtoapi"
+  # Indexed services — use FQDNs to reach services across namespaces:
+  #   http://<service>.<namespace>.svc.cluster.local
+  # Short names (http://<service>) only resolve within the same namespace.
+  Services__precoapi: "http://precoapi.mcp-apis.svc.cluster.local"
+  Services__produtoapi: "http://produtoapi.mcp-apis.svc.cluster.local"
   # Discovery:Mode options: Config | Kubernetes | Both
   Discovery__Mode: "Config"
   Discovery__KubernetesLabel: "mcp-apis/indexed"

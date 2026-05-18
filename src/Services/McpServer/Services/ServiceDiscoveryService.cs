@@ -49,8 +49,23 @@ public class ServiceDiscoveryService : IServiceDiscovery
         var section = _config.GetSection("Services");
         foreach (var child in section.GetChildren())
         {
-            if (!string.IsNullOrWhiteSpace(child.Value))
-                result[child.Key] = child.Value;
+            if (string.IsNullOrWhiteSpace(child.Value))
+                continue;
+
+            result[child.Key] = child.Value;
+
+            // Warn about short hostnames — they only resolve within the same namespace.
+            // Use FQDNs (http://<service>.<namespace>.svc.cluster.local) to reach
+            // services in other namespaces.
+            if (Uri.TryCreate(child.Value, UriKind.Absolute, out var uri)
+                && !uri.Host.Contains('.'))
+            {
+                _logger.LogWarning(
+                    "Service '{Name}' uses short hostname '{Host}'. " +
+                    "This only resolves within the same namespace. " +
+                    "Use http://{Host}.<namespace>.svc.cluster.local for cross-namespace access.",
+                    child.Key, uri.Host, uri.Host);
+            }
         }
     }
 
