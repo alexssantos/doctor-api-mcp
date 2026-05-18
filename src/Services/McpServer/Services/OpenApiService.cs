@@ -16,13 +16,13 @@ public class OpenApiService : IOpenApiCollector
 
     public async Task<string> GetOpenApiSpecAsync(string serviceName)
     {
-        if (!_registry.TryGetBaseUrl(serviceName, out var baseUrl))
+        if (!_registry.TryGet(serviceName, out var endpoint))
         {
             var known = string.Join(", ", _registry.GetAll().Keys);
             return $"Unknown service: {serviceName}. Available: {known}";
         }
 
-        var response = await _http.GetAsync($"{baseUrl.TrimEnd('/')}/openapi/v1.json");
+        var response = await _http.GetAsync($"{endpoint.BaseUrl}{endpoint.OpenApiPath}");
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }

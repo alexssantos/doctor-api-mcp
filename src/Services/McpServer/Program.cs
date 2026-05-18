@@ -6,8 +6,8 @@ using ModelContextProtocol.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
-var jaegerBaseUrl = builder.Configuration["Jaeger:BaseUrl"] ?? "http://jaeger:16686";
-var k8sNamespace = builder.Configuration["Kubernetes:Namespace"] ?? "mcp-apis";
+var jaegerBaseUrl = builder.Configuration["DataSources:Jaeger:BaseUrl"] ?? "http://jaeger:16686";
+var k8sNamespace = builder.Configuration["DataSources:Kubernetes:Namespace"] ?? "mcp-apis";
 
 // Core collectors
 builder.Services.AddSingleton<IJaegerCollector>(new JaegerService(jaegerBaseUrl));
@@ -81,8 +81,10 @@ static async Task RunServiceDiscoveryAsync(WebApplication app)
         var result = await validator.ValidateAsync(name, url);
         if (result.IsValid)
         {
-            registry.Register(name, url);
-            logger.LogInformation("✓ Registered service '{Name}' at {Url}", name, url);
+            registry.Register(name, url, result.OpenApiPath);
+            logger.LogInformation(
+                "✓ Registered service '{Name}' at {Url} (spec: {Path})",
+                name, url, result.OpenApiPath);
         }
         else
         {

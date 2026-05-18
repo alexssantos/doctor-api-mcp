@@ -5,13 +5,18 @@ metadata:
   namespace: mcp-apis
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
-  Jaeger__BaseUrl: "http://jaeger:16686"
-  Kubernetes__Namespace: "mcp-apis"
+  # Data sources
+  DataSources__Jaeger__BaseUrl: "http://jaeger:16686"
+  DataSources__Kubernetes__Namespace: "mcp-apis"
+  # OpenAPI spec paths probed in order — first 200 response wins
+  DataSources__OpenApiSpecPaths__0: "/openapi/v1.json"
+  DataSources__OpenApiSpecPaths__1: "/openapi/v2.json"
+  DataSources__OpenApiSpecPaths__2: "/swagger/v1/swagger.json"
+  DataSources__OpenApiSpecPaths__3: "/api/v1/openapi.json"
+  DataSources__OpenApiSpecPaths__4: "/api-docs/v1.json"
+  # Indexed services (used when Discovery__Mode is Config or Both)
   Services__precoapi: "http://precoapi"
   Services__produtoapi: "http://produtoapi"
   # Discovery:Mode options: Config | Kubernetes | Both
-  # - Config: reads Services__ env vars above (default, no cluster permissions needed)
-  # - Kubernetes: discovers services labelled mcp-apis/indexed=true in the namespace
-  # - Both: merges both sources (Kubernetes entries override Config entries)
   Discovery__Mode: "Config"
   Discovery__KubernetesLabel: "mcp-apis/indexed"

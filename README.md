@@ -357,17 +357,19 @@ metadata:
 
 Antes de registrar qualquer candidato, o `ServiceValidator` verifica três critérios. Se qualquer um falhar, o serviço é ignorado:
 
-| # | Critério                          | Detalhe                                                       |
-|---|-----------------------------------|---------------------------------------------------------------|
-| 1 | **Serviço acessível**             | Responde HTTP < 500 em `/health` ou `/` (timeout 10 s)        |
-| 2 | **OpenAPI spec acessível**        | `GET /openapi/v1.json` retorna HTTP 200                       |
-| 3 | **Spec com conteúdo válido**      | JSON parseável com pelo menos um `path` definido              |
+| # | Critério                          | Detalhe                                                                               |
+|---|-----------------------------------|---------------------------------------------------------------------------------------|
+| 1 | **Serviço acessível**             | Responde HTTP < 500 em `/health` ou `/` (timeout 10 s)                                |
+| 2 | **OpenAPI spec acessível**        | Primeiro path de `DataSources:OpenApiSpecPaths` que retorne HTTP 200                  |
+| 3 | **Spec com conteúdo válido**      | JSON parseável com pelo menos um `path` definido                                      |
+
+O critério 2 testa os caminhos em ordem e usa o primeiro bem-sucedido. O caminho resolvido é gravado no `ServiceRegistry` e reutilizado em todas as chamadas da tool.
 
 **Exemplo de log no startup:**
 ```
 info: Service discovery (Config) found 2 candidate(s): precoapi, produtoapi
-info: ✓ Registered service 'precoapi' at http://precoapi
-warn: ✗ Skipped service 'produtoapi' at http://produtoapi: OpenAPI spec not accessible: HTTP 404
+info: ✓ Registered service 'precoapi' at http://precoapi (spec: /openapi/v1.json)
+warn: ✗ Skipped service 'produtoapi' at http://produtoapi: OpenAPI spec not found. Probed paths: /openapi/v1.json → HTTP 404, /swagger/v1/swagger.json → HTTP 404
 info: Service discovery complete. 1 service(s) registered: precoapi
 ```
 
@@ -377,10 +379,10 @@ info: Service discovery complete. 1 service(s) registered: precoapi
 
 Para que qualquer serviço passe na validação e seja exposto pelas tools do MCP, ele deve oferecer:
 
-| Endpoint             | Requisito                                                              |
-|----------------------|------------------------------------------------------------------------|
-| `/health` ou `/`     | Responder HTTP < 500 (prova que o serviço está no ar)                  |
-| `/openapi/v1.json`   | Retornar a spec OpenAPI em JSON com pelo menos um `path` definido      |
+| Endpoint                           | Requisito                                                              |
+|------------------------------------|------------------------------------------------------------------------|
+| `/health` ou `/`                   | Responder HTTP < 500 (prova que o serviço está no ar)                  |
+| Um dos `DataSources:OpenApiSpecPaths` | Retornar a spec OpenAPI em JSON com pelo menos um `path` definido   |
 
 **No .NET com `Microsoft.AspNetCore.OpenApi`:**
 ```csharp
@@ -391,19 +393,20 @@ app.MapOpenApi(); // expõe /openapi/v1.json por padrão
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 ```
 
-O endpoint `/openapi/v1.json` é o gerado por padrão pelo `MapOpenApi()` no .NET 9+. Se o seu serviço usa Swashbuckle ou outra path, configure `Services__<nome>` para apontar para a URL base correta e certifique-se de que `/openapi/v1.json` está mapeado.
+Se o serviço expõe a spec em outro caminho (ex: `/swagger/v1/swagger.json`), basta que esse path esteja listado em `DataSources__OpenApiSpecPaths` no configmap — não é necessário alterar o serviço.
 
 ---
 
 ### Referência completa de configuração
 
-| Variável de ambiente              | Padrão              | Descrição                                                  |
-|-----------------------------------|---------------------|------------------------------------------------------------|
-| `Jaeger__BaseUrl`                 | `http://jaeger:16686` | URL da API REST do Jaeger                                |
-| `Kubernetes__Namespace`           | `mcp-apis`          | Namespace monitorado                                       |
-| `Discovery__Mode`                 | `Config`            | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`      |
-| `Discovery__KubernetesLabel`      | `mcp-apis/indexed`  | Label K8s que marca serviços para indexação                |
-| `Services__<nome>`                | —                   | URL base de um serviço (usado no modo `Config` ou `Both`)  |
+| Variável de ambiente                     | Padrão                 | Descrição                                                       |
+|------------------------------------------|------------------------|-----------------------------------------------------------------|
+| `DataSources__Jaeger__BaseUrl`           | `http://jaeger:16686`  | URL da API REST do Jaeger                                       |
+| `DataSources__Kubernetes__Namespace`     | `mcp-apis`             | Namespace Kubernetes monitorado                                 |
+| `DataSources__OpenApiSpecPaths__0..N`    | `/openapi/v1.json`     | Caminhos candidatos para spec OpenAPI (primeiro 200 vence)      |
+| `Discovery__Mode`                        | `Config`               | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`           |
+| `Discovery__KubernetesLabel`             | `mcp-apis/indexed`     | Label K8s que marca serviços para indexação                     |
+| `Services__<nome>`                       | —                      | URL base de um serviço (usado no modo `Config` ou `Both`)       |
 
 > 📄 Documentação detalhada: [`doc/features/003_service_discovery_and_validation.md`](doc/features/003_service_discovery_and_validation.md)
 

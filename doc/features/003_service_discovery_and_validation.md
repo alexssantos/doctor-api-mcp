@@ -123,21 +123,46 @@ Após a descoberta, cada candidato passa pelo `ServiceValidator`. Apenas serviç
 
 ### Critérios de validação
 
-| # | Critério                        | Detalhe                                                                    |
-|---|----------------------------------|----------------------------------------------------------------------------|
-| 1 | **Serviço acessível**            | Responde com HTTP < 500 em `/health` ou `/` (timeout: 10s)                 |
-| 2 | **OpenAPI spec acessível**       | `GET /openapi/v1.json` retorna HTTP 200                                    |
-| 3 | **Spec com conteúdo válido**     | JSON parseável com pelo menos um `path` definido                           |
+| # | Critério                        | Detalhe                                                                                   |
+|---|----------------------------------|-------------------------------------------------------------------------------------------|
+| 1 | **Serviço acessível**            | Responde com HTTP < 500 em `/health` ou `/` (timeout: 10s)                                |
+| 2 | **OpenAPI spec acessível**       | Primeiro path de `DataSources:OpenApiSpecPaths` que retorne HTTP 200                      |
+| 3 | **Spec com conteúdo válido**     | JSON parseável com pelo menos um `path` definido                                          |
+
+O critério 2 testa os caminhos em ordem e usa o primeiro bem-sucedido. O caminho resolvido é gravado no `ServiceRegistry` e reutilizado em todas as chamadas subsequentes da tool.
 
 Se **qualquer critério falhar**, o serviço é ignorado e uma mensagem de aviso é emitida nos logs.
+
+### Configurando os caminhos OpenAPI candidatos
+
+Os caminhos são lidos de `DataSources:OpenApiSpecPaths`. Adicione ou reordene entradas para cobrir o padrão de URL do seu serviço:
+
+```json
+"DataSources": {
+  "OpenApiSpecPaths": [
+    "/openapi/v1.json",
+    "/openapi/v2.json",
+    "/swagger/v1/swagger.json",
+    "/api/v1/openapi.json",
+    "/api-docs/v1.json"
+  ]
+}
+```
+
+Em ConfigMap K8s, arrays usam sufixo numérico:
+```yaml
+DataSources__OpenApiSpecPaths__0: "/openapi/v1.json"
+DataSources__OpenApiSpecPaths__1: "/openapi/v2.json"
+DataSources__OpenApiSpecPaths__2: "/swagger/v1/swagger.json"
+```
 
 ### Exemplos de log no startup
 
 ```
 info: Starting service discovery...
 info: Service discovery (Config) found 2 candidate(s): precoapi, produtoapi
-info: ✓ Registered service 'precoapi' at http://precoapi
-warn: ✗ Skipped service 'produtoapi' at http://produtoapi: OpenAPI spec not accessible: HTTP 404
+info: ✓ Registered service 'precoapi' at http://precoapi (spec: /openapi/v1.json)
+warn: ✗ Skipped service 'produtoapi' at http://produtoapi: OpenAPI spec not found. Probed paths: /openapi/v1.json → HTTP 404, /openapi/v2.json → HTTP 404, /swagger/v1/swagger.json → HTTP 404
 info: Service discovery complete. 1 service(s) registered: precoapi
 ```
 
@@ -157,6 +182,21 @@ info: Service discovery complete. 1 service(s) registered: precoapi
 
 ```json
 {
+  "DataSources": {
+    "Jaeger": {
+      "BaseUrl": "http://jaeger:16686"
+    },
+    "Kubernetes": {
+      "Namespace": "mcp-apis"
+    },
+    "OpenApiSpecPaths": [
+      "/openapi/v1.json",
+      "/openapi/v2.json",
+      "/swagger/v1/swagger.json",
+      "/api/v1/openapi.json",
+      "/api-docs/v1.json"
+    ]
+  },
   "Discovery": {
     "Mode": "Config",
     "KubernetesLabel": "mcp-apis/indexed"
@@ -168,8 +208,11 @@ info: Service discovery complete. 1 service(s) registered: precoapi
 }
 ```
 
-| Chave                        | Padrão              | Descrição                                              |
-|------------------------------|---------------------|--------------------------------------------------------|
-| `Discovery:Mode`             | `Config`            | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`  |
-| `Discovery:KubernetesLabel`  | `mcp-apis/indexed`  | Label K8s que marca serviços para indexação            |
-| `Services:<nome>`            | —                   | URL base de um serviço (modo `Config` ou `Both`)       |
+| Chave                               | Padrão                  | Descrição                                                       |
+|-------------------------------------|-------------------------|-----------------------------------------------------------------|
+| `DataSources:Jaeger:BaseUrl`        | `http://jaeger:16686`   | URL da API REST do Jaeger                                       |
+| `DataSources:Kubernetes:Namespace`  | `mcp-apis`              | Namespace Kubernetes monitorado                                 |
+| `DataSources:OpenApiSpecPaths`      | `[/openapi/v1.json]`    | Caminhos candidatos para a spec OpenAPI (primeiro 200 vence)    |
+| `Discovery:Mode`                    | `Config`                | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`           |
+| `Discovery:KubernetesLabel`         | `mcp-apis/indexed`      | Label K8s que marca serviços para indexação                     |
+| `Services:<nome>`                   | —                       | URL base de um serviço (modo `Config` ou `Both`)                |

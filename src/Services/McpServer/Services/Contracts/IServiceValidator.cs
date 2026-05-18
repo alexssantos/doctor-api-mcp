@@ -8,5 +8,6 @@ public interface IServiceValidator
 public record ServiceValidationResult(
     string ServiceName,
     string BaseUrl,
+    string OpenApiPath,
     bool IsValid,
     IReadOnlyList<string> Failures);

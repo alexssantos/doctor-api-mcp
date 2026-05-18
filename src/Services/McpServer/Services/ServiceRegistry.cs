@@ -7,14 +7,14 @@ namespace McpApis.McpServer.Services;
 /// </summary>
 public class ServiceRegistry : IServiceRegistry
 {
-    private readonly Dictionary<string, string> _services =
+    private readonly Dictionary<string, ServiceEndpoint> _services =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public void Register(string serviceName, string baseUrl) =>
-        _services[serviceName] = baseUrl.TrimEnd('/');
+    public void Register(string serviceName, string baseUrl, string openApiPath) =>
+        _services[serviceName] = new ServiceEndpoint(baseUrl.TrimEnd('/'), openApiPath);
 
-    public IReadOnlyDictionary<string, string> GetAll() => _services;
+    public IReadOnlyDictionary<string, ServiceEndpoint> GetAll() => _services;
 
-    public bool TryGetBaseUrl(string serviceName, out string baseUrl) =>
-        _services.TryGetValue(serviceName, out baseUrl!);
+    public bool TryGet(string serviceName, out ServiceEndpoint endpoint) =>
+        _services.TryGetValue(serviceName, out endpoint!);
 }
