@@ -309,18 +309,25 @@ Controlado pela variável `Discovery__Mode` (ou `Discovery:Mode` no `appsettings
 
 ### Modo `Config`
 
-Cada entrada em `Services` vira um serviço candidato:
+Cada entrada em `Services` vira um serviço candidato. A **chave** é o alias que o MCP expõe para o LLM (aparece nas tools e nos logs); o **valor** é a URL real do Service K8s — os dois não precisam ser iguais:
 
 ```yaml
 # infra/k8s/mcpserver/configmap.yaml
-Services__precoapi:   "http://precoapi"
-Services__produtoapi: "http://produtoapi"
-Discovery__Mode:      "Config"
+#
+#   chave (alias MCP)          valor (URL do Service K8s)
+#         ↓                              ↓
+Services__pricing-api: "http://precoapi.mcp-apis.svc.cluster.local"
+Services__product-api: "http://produtoapi.mcp-apis.svc.cluster.local"
+Discovery__Mode:       "Config"
 ```
 
-Para adicionar um novo serviço basta incluir a variável:
+O LLM verá `pricing-api` e `product-api` nas ferramentas, enquanto o DNS resolve para os Services `precoapi` e `produtoapi` no namespace `mcp-apis`.
+
+Use sempre FQDNs (`http://<service>.<namespace>.svc.cluster.local`) para garantir que o MCP Server alcance o serviço independentemente do namespace onde ele roda. URLs curtas (`http://precoapi`) só resolvem se o MCP Server estiver no **mesmo** namespace.
+
+Para adicionar um serviço em outro namespace basta apontar para o FQDN correto:
 ```yaml
-Services__meuservico: "http://meuservico"
+Services__minha-api: "http://minha-api.outro-namespace.svc.cluster.local"
 ```
 
 ---
@@ -330,8 +337,8 @@ Services__meuservico: "http://meuservico"
 O McpServer lista todos os `Service` no namespace com a label configurada em `Discovery__KubernetesLabel` (padrão: `mcp-apis/indexed`) e valor `"true"`.
 
 A URL base de cada serviço é resolvida em ordem:
-1. Annotation `mcp-apis/base-url` no objeto `Service`
-2. Fallback: `http://<nome-do-service>`
+1. Annotation `mcp-apis/base-url` no objeto `Service` (use FQDN para suporte multi-namespace)
+2. Fallback: FQDN gerado automaticamente como `http://<name>.<namespace>.svc.cluster.local`
 
 **Ativar o modo:**
 ```yaml
