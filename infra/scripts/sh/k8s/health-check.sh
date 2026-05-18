@@ -93,11 +93,17 @@ fi
 # ─── 4. Pods ──────────────────────────────────────────────────────────────────
 section "4. Pods"
 
-# Funcao: busca pod por label app=X; se nao encontrar, tenta app.kubernetes.io/instance=X
+# Tenta encontrar pod por 3 selectors:
+#   1. app=X                           (raw k8s manifests: jaeger, prometheus, etc.)
+#   2. app.kubernetes.io/name=X        (Helm charts: precoapi, produtoapi, mcpserver)
+#   3. app.kubernetes.io/instance=X    (Bitnami: postgres-produto, postgres-preco)
 get_pod_status() {
   local name="$1"
   local result
   result=$(kubectl get pods -n "${NAMESPACE}" -l "app=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+  if [[ -z "$result" ]]; then
+    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+  fi
   if [[ -z "$result" ]]; then
     result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/instance=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
   fi

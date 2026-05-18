@@ -16,7 +16,6 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{- define "produtoapi.selectorLabels" -}}
-app: {{ include "produtoapi.name" . }}
 app.kubernetes.io/name: {{ include "produtoapi.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
