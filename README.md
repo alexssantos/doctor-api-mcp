@@ -11,6 +11,7 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
 - [Stack Tecnológica](#stack-tecnológica)
 - [Estrutura de Arquivos](#estrutura-de-arquivos)
 - [MCP Server — Ferramentas](#mcp-server--ferramentas)
+- [Configuração do MCP Server](#configuração-do-mcp-server)
 - [Observabilidade](#observabilidade)
 - [Kubernetes](#kubernetes)
 - [Helm Charts](#helm-charts)
@@ -79,7 +80,7 @@ Responsável exclusivamente pelo gerenciamento de preços de produtos.
 | `/api/prices` | POST | Cria entrada de preço |
 | `/api/prices/{productId}` | PUT | Atualiza preço |
 | `/scalar/v1` | GET | UI interativa da API (Scalar) |
-| `/openapi/v1.json` | GET | Spec OpenAPI |
+| `/openapi/v1.json` | GET | Spec OpenAPI — **obrigatório para indexação pelo MCP** |
 | `/metrics` | GET | Métricas Prometheus |
 
 **Banco:** PostgreSQL separado (`preco_db`). Modelo: `Price { Id, ProductId, Value, Currency, UpdatedAt }`.
@@ -96,7 +97,7 @@ Gerencia produtos e enriquece as respostas com dados de preço vindos da PrecoAP
 | `/api/products/{id}` | PUT | Atualiza produto |
 | `/api/products/{id}` | DELETE | Remove produto |
 | `/scalar/v1` | GET | UI interativa da API (Scalar) |
-| `/openapi/v1.json` | GET | Spec OpenAPI |
+| `/openapi/v1.json` | GET | Spec OpenAPI — **obrigatório para indexação pelo MCP** |
 | `/metrics` | GET | Métricas Prometheus |
 
 **Banco:** PostgreSQL separado (`produto_db`). Modelo: `Product { Id, Name, Description, CreatedAt }`.
@@ -271,7 +272,140 @@ builder.Services
     // ...
 ```
 
-Cada tool é uma classe estática com método `Execute` anotado com `[McpServerTool]`. Os parâmetros que são serviços do DI (ex: `KubernetesService k8s`) são resolvidos automaticamente. Parâmetros primitivos viram argumentos da ferramenta visíveis ao LLM.
+Cada tool é uma classe estática com método `Execute` anotado com `[McpServerTool]`. Os parâmetros que são serviços do DI (ex: `IKubernetesCollector k8s`) são resolvidos automaticamente. Parâmetros primitivos viram argumentos da ferramenta visíveis ao LLM.
+
+---
+
+## Configuração do MCP Server
+
+### Pipeline de inicialização
+
+Ao subir, o McpServer executa automaticamente:
+
+```
+Discovery (ServiceDiscoveryService)
+  └─► coleta candidatos (config + / ou K8s)
+       └─► Validation (ServiceValidator) — por candidato
+              └─► se válido → ServiceRegistry.Register()
+```
+
+Apenas serviços registrados ficam disponíveis nas tools. Serviços que falham na validação são ignorados com log de aviso — o servidor sobe normalmente para os demais.
+
+---
+
+### Modos de descoberta
+
+Controlado pela variável `Discovery__Mode` (ou `Discovery:Mode` no `appsettings.json`):
+
+| Modo         | Fonte                                                                          |
+|--------------|--------------------------------------------------------------------------------|
+| `Config`     | Seção `Services` do appsettings / variáveis de ambiente `Services__<nome>`     |
+| `Kubernetes` | Services no namespace com label `mcp-apis/indexed=true`                        |
+| `Both`       | Mescla ambas as fontes — K8s sobrescreve Config em caso de conflito de nome    |
+
+**Padrão:** `Config`.
+
+---
+
+### Modo `Config`
+
+Cada entrada em `Services` vira um serviço candidato:
+
+```yaml
+# infra/k8s/mcpserver/configmap.yaml
+Services__precoapi:   "http://precoapi"
+Services__produtoapi: "http://produtoapi"
+Discovery__Mode:      "Config"
+```
+
+Para adicionar um novo serviço basta incluir a variável:
+```yaml
+Services__meuservico: "http://meuservico"
+```
+
+---
+
+### Modo `Kubernetes`
+
+O McpServer lista todos os `Service` no namespace com a label configurada em `Discovery__KubernetesLabel` (padrão: `mcp-apis/indexed`) e valor `"true"`.
+
+A URL base de cada serviço é resolvida em ordem:
+1. Annotation `mcp-apis/base-url` no objeto `Service`
+2. Fallback: `http://<nome-do-service>`
+
+**Ativar o modo:**
+```yaml
+Discovery__Mode:           "Kubernetes"
+Discovery__KubernetesLabel: "mcp-apis/indexed"
+```
+
+**Anotar um serviço para ser descoberto:**
+```yaml
+# infra/k8s/<meuservico>/service.yaml
+metadata:
+  labels:
+    mcp-apis/indexed: "true"
+  annotations:
+    mcp-apis/base-url: "http://meuservico"
+```
+
+> ⚠️ Requer permissão `list` em `services` para o `ServiceAccount` do McpServer. O RBAC em `infra/k8s/mcpserver/rbac.yaml` já contempla essa permissão.
+
+---
+
+### Validação antes de indexar
+
+Antes de registrar qualquer candidato, o `ServiceValidator` verifica três critérios. Se qualquer um falhar, o serviço é ignorado:
+
+| # | Critério                          | Detalhe                                                       |
+|---|-----------------------------------|---------------------------------------------------------------|
+| 1 | **Serviço acessível**             | Responde HTTP < 500 em `/health` ou `/` (timeout 10 s)        |
+| 2 | **OpenAPI spec acessível**        | `GET /openapi/v1.json` retorna HTTP 200                       |
+| 3 | **Spec com conteúdo válido**      | JSON parseável com pelo menos um `path` definido              |
+
+**Exemplo de log no startup:**
+```
+info: Service discovery (Config) found 2 candidate(s): precoapi, produtoapi
+info: ✓ Registered service 'precoapi' at http://precoapi
+warn: ✗ Skipped service 'produtoapi' at http://produtoapi: OpenAPI spec not accessible: HTTP 404
+info: Service discovery complete. 1 service(s) registered: precoapi
+```
+
+---
+
+### Requisitos mínimos de uma API para ser indexada
+
+Para que qualquer serviço passe na validação e seja exposto pelas tools do MCP, ele deve oferecer:
+
+| Endpoint             | Requisito                                                              |
+|----------------------|------------------------------------------------------------------------|
+| `/health` ou `/`     | Responder HTTP < 500 (prova que o serviço está no ar)                  |
+| `/openapi/v1.json`   | Retornar a spec OpenAPI em JSON com pelo menos um `path` definido      |
+
+**No .NET com `Microsoft.AspNetCore.OpenApi`:**
+```csharp
+// Program.cs
+builder.Services.AddOpenApi();
+// ...
+app.MapOpenApi(); // expõe /openapi/v1.json por padrão
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+```
+
+O endpoint `/openapi/v1.json` é o gerado por padrão pelo `MapOpenApi()` no .NET 9+. Se o seu serviço usa Swashbuckle ou outra path, configure `Services__<nome>` para apontar para a URL base correta e certifique-se de que `/openapi/v1.json` está mapeado.
+
+---
+
+### Referência completa de configuração
+
+| Variável de ambiente              | Padrão              | Descrição                                                  |
+|-----------------------------------|---------------------|------------------------------------------------------------|
+| `Jaeger__BaseUrl`                 | `http://jaeger:16686` | URL da API REST do Jaeger                                |
+| `Kubernetes__Namespace`           | `mcp-apis`          | Namespace monitorado                                       |
+| `Discovery__Mode`                 | `Config`            | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`      |
+| `Discovery__KubernetesLabel`      | `mcp-apis/indexed`  | Label K8s que marca serviços para indexação                |
+| `Services__<nome>`                | —                   | URL base de um serviço (usado no modo `Config` ou `Both`)  |
+
+> 📄 Documentação detalhada: [`doc/features/003_service_discovery_and_validation.md`](doc/features/003_service_discovery_and_validation.md)
 
 ---
 
