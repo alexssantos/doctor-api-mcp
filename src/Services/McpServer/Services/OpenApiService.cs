@@ -1,24 +1,28 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using McpApis.McpServer.Services.Contracts;
 
 namespace McpApis.McpServer.Services;
 
-public class OpenApiService
+public class OpenApiService : IOpenApiCollector
 {
-    private static readonly Dictionary<string, string> ServiceEndpoints = new()
-    {
-        ["precoapi"] = "http://precoapi",
-        ["produtoapi"] = "http://produtoapi"
-    };
-
+    private readonly IServiceRegistry _registry;
     private readonly HttpClient _http = new();
+
+    public OpenApiService(IServiceRegistry registry)
+    {
+        _registry = registry;
+    }
 
     public async Task<string> GetOpenApiSpecAsync(string serviceName)
     {
-        if (!ServiceEndpoints.TryGetValue(serviceName.ToLowerInvariant(), out var baseUrl))
-            return $"Unknown service: {serviceName}. Available: {string.Join(", ", ServiceEndpoints.Keys)}";
+        if (!_registry.TryGetBaseUrl(serviceName, out var baseUrl))
+        {
+            var known = string.Join(", ", _registry.GetAll().Keys);
+            return $"Unknown service: {serviceName}. Available: {known}";
+        }
 
-        var response = await _http.GetAsync($"{baseUrl}/openapi/v1.json");
+        var response = await _http.GetAsync($"{baseUrl.TrimEnd('/')}/openapi/v1.json");
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }
@@ -56,7 +60,7 @@ public class OpenApiService
         return routes;
     }
 
-    public IReadOnlyCollection<string> GetKnownServices() => ServiceEndpoints.Keys;
+    public IReadOnlyCollection<string> GetKnownServices() => [.. _registry.GetAll().Keys];
 }
 
 public class RouteInfo

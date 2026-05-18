@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using McpApis.McpServer.Services;
+using McpApis.McpServer.Services.Contracts;
 using ModelContextProtocol.Server;
 
 namespace McpApis.McpServer.Tools;
@@ -10,9 +11,9 @@ public class ExplainApiTool
 {
     [McpServerTool(Name = "explain_api"), Description("Explains what a service API does by combining its OpenAPI spec (routes, methods, descriptions) with recent trace data.")]
     public static async Task<string> Execute(
-        OpenApiService openApi,
-        JaegerService jaeger,
-        [Description("Service name: precoapi or produtoapi")] string serviceName)
+        IOpenApiCollector openApi,
+        IJaegerCollector jaeger,
+        [Description("Service name (e.g. precoapi, produtoapi)")] string serviceName)
     {
         var routes = await openApi.GetRoutesAsync(serviceName);
         var services = await jaeger.GetServicesAsync();

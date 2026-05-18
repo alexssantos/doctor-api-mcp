@@ -9,3 +9,9 @@ data:
   Kubernetes__Namespace: "mcp-apis"
   Services__precoapi: "http://precoapi"
   Services__produtoapi: "http://produtoapi"
+  # Discovery:Mode options: Config | Kubernetes | Both
+  # - Config: reads Services__ env vars above (default, no cluster permissions needed)
+  # - Kubernetes: discovers services labelled mcp-apis/indexed=true in the namespace
+  # - Both: merges both sources (Kubernetes entries override Config entries)
+  Discovery__Mode: "Config"
+  Discovery__KubernetesLabel: "mcp-apis/indexed"

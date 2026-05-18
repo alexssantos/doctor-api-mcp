@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using McpApis.McpServer.Services;
+using McpApis.McpServer.Services.Contracts;
 using ModelContextProtocol.Server;
 
 namespace McpApis.McpServer.Tools;
@@ -10,9 +11,9 @@ public class FindDataOriginTool
 {
     [McpServerTool(Name = "find_data_origin"), Description("Traces the origin of data for a given route by combining OpenAPI structure with Jaeger traces. Shows the full call chain from client to database.")]
     public static async Task<string> Execute(
-        OpenApiService openApi,
-        JaegerService jaeger,
-        KubernetesService k8s,
+        IOpenApiCollector openApi,
+        IJaegerCollector jaeger,
+        IKubernetesCollector k8s,
         [Description("Service name (e.g. produtoapi)")] string serviceName,
         [Description("Route path (e.g. /api/produtos/{id})")] string route)
     {

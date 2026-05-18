@@ -1,9 +1,10 @@
 using k8s;
 using k8s.Models;
+using McpApis.McpServer.Services.Contracts;
 
 namespace McpApis.McpServer.Services;
 
-public class KubernetesService
+public class KubernetesService : IKubernetesCollector
 {
     private readonly string _namespace;
     private readonly Kubernetes _client;
@@ -78,6 +79,25 @@ public class KubernetesService
                 }).ToList() ?? []
             }).ToList()
         };
+    }
+
+    public async Task<Dictionary<string, string>> DiscoverIndexedServicesAsync(string labelKey)
+    {
+        var services = await _client.ListNamespacedServiceAsync(
+            _namespace,
+            labelSelector: $"{labelKey}=true");
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var svc in services.Items)
+        {
+            var name = svc.Metadata.Name;
+            var baseUrl = svc.Metadata.Annotations != null
+                && svc.Metadata.Annotations.TryGetValue("mcp-apis/base-url", out var url)
+                ? url
+                : $"http://{name}";
+            result[name] = baseUrl;
+        }
+        return result;
     }
 }
 

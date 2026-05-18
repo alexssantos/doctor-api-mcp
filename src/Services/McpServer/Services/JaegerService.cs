@@ -1,9 +1,10 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using McpApis.McpServer.Services.Contracts;
 
 namespace McpApis.McpServer.Services;
 
-public class JaegerService
+public class JaegerService : IJaegerCollector
 {
     private readonly string _baseUrl;
     private readonly HttpClient _http;

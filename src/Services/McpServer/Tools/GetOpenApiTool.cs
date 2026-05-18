@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using McpApis.McpServer.Services;
+using McpApis.McpServer.Services.Contracts;
 using ModelContextProtocol.Server;
 
 namespace McpApis.McpServer.Tools;
@@ -7,10 +8,10 @@ namespace McpApis.McpServer.Tools;
 [McpServerToolType]
 public class GetOpenApiTool
 {
-    [McpServerTool(Name = "get_openapi"), Description("Retrieves the OpenAPI specification for a given service (precoapi or produtoapi).")]
+    [McpServerTool(Name = "get_openapi"), Description("Retrieves the OpenAPI specification for a given service.")]
     public static async Task<string> Execute(
-        OpenApiService openApi,
-        [Description("Service name: precoapi or produtoapi")] string serviceName)
+        IOpenApiCollector openApi,
+        [Description("Service name (e.g. precoapi, produtoapi)")] string serviceName)
     {
         return await openApi.GetOpenApiSpecAsync(serviceName);
     }

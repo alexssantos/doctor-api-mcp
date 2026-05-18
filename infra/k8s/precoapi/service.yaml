@@ -3,6 +3,10 @@ kind: Service
 metadata:
   name: precoapi
   namespace: mcp-apis
+  labels:
+    mcp-apis/indexed: "true"
+  annotations:
+    mcp-apis/base-url: "http://precoapi"
 spec:
   selector:
     app: precoapi
