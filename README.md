@@ -19,6 +19,7 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
 - [Decisões de Implementação](#decisões-de-implementação)
 - [Portas e Acessos](#portas-e-acessos)
 - [Configuração do Ambiente](#configuração-do-ambiente)
+- [Desenvolvimento com Tilt](#desenvolvimento-com-tilt)
 
 ---
 
@@ -241,6 +242,7 @@ mcp-apis/
     ├── guia_configuracao_mcp.md
     ├── mcp_orquestrador_docker.md
     ├── mcp_orquestrador_k8s.md
+    ├── tilt.md                            # Guia de desenvolvimento local com Tilt
     └── features/
         ├── 001_implementacao_base.md
         └── 002_tracing_with_body.md
@@ -673,3 +675,25 @@ Inicie os port-forwards antes de usar o MCP:
 ```powershell
 .\scripts\ps\down-k8s.ps1
 ```
+
+---
+
+## Desenvolvimento com Tilt
+
+O [Tilt](https://tilt.dev) é a forma recomendada para desenvolvimento ativo — ele automatiza o ciclo build → deploy → port-forward e faz hot reload ao detectar mudanças nos arquivos fonte.
+
+```bash
+tilt up    # sobe tudo e abre a UI em http://localhost:10350
+tilt down  # encerra e remove os recursos do cluster
+```
+
+| Serviço | Port-forward (Tilt) |
+|---|---|
+| PrecoAPI | `http://localhost:8081` |
+| ProdutoAPI | `http://localhost:8082` |
+| McpServer | `http://localhost:4000` |
+| Grafana | `http://localhost:3000` |
+| Prometheus | `http://localhost:9090` |
+| Jaeger UI | `http://localhost:16686` |
+
+📄 Documentação completa: [`doc/tilt.md`](doc/tilt.md)
