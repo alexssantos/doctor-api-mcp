@@ -17,7 +17,7 @@ public static class ObservabilityExtensions
         var otlpEndpoint = configuration["Otel:Endpoint"] ?? "http://localhost:4317";
         var captureBody = configuration.GetValue<bool>("Otel:CaptureBody");
 
-        services.AddOpenApiTelemetry(serviceName, otlpEndpoint);
+        services.AddOpenApiTelemetry(serviceName, otlpEndpoint, captureBody);
 
         services.AddMetricsTelemetry(serviceName);
 
@@ -36,7 +36,8 @@ public static class ObservabilityExtensions
     private static IServiceCollection AddOpenApiTelemetry(
         this IServiceCollection services,
         string serviceName,
-        string otlpEndpoint)
+        string otlpEndpoint,
+        bool captureSensitiveData)
     {
         services.AddOpenTelemetry()
             .WithTracing(tracing =>
@@ -53,7 +54,10 @@ public static class ObservabilityExtensions
                     })
                     .AddEntityFrameworkCoreInstrumentation(opts =>
                     {
-                        opts.SetDbStatementForText = true;
+                        // SQL statement text (and its parameter values) is only recorded
+                        // when explicit body/sensitive-data capture is enabled (Otel:CaptureBody),
+                        // to avoid leaking query data (potential PII) into Jaeger by default.
+                        opts.SetDbStatementForText = captureSensitiveData;
                     })
                     .AddOtlpExporter(opts =>
                     {

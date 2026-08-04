@@ -7,11 +7,12 @@ namespace McpApis.McpServer.Services;
 public class OpenApiService : IOpenApiCollector
 {
     private readonly IServiceRegistry _registry;
-    private readonly HttpClient _http = new();
+    private readonly HttpClient _http;
 
-    public OpenApiService(IServiceRegistry registry)
+    public OpenApiService(IServiceRegistry registry, HttpClient http)
     {
         _registry = registry;
+        _http = http;
     }
 
     public async Task<string> GetOpenApiSpecAsync(string serviceName)

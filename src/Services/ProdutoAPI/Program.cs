@@ -2,8 +2,10 @@ using McpApis.BuildingBlocks.Http;
 using McpApis.BuildingBlocks.Observability;
 using McpApis.ProdutoAPI.Data;
 using McpApis.ProdutoAPI.Integration.PrecoApi;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +19,21 @@ builder.Services.AddHttpClientWithCorrelation<PriceClient, PriceClient>(precoApi
 
 // Observability
 builder.Services.AddObservability("ProdutoAPI", builder.Configuration);
+
+// Rate limiting: protects against abuse/DoS since the API has no authentication.
+builder.Services.AddRateLimiter(opts =>
+{
+    opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opts.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 
 // Controllers + OpenAPI
 builder.Services.AddControllers();
@@ -42,13 +59,21 @@ using (var scope = app.Services.CreateScope())
 
 app.UseBodyCaptureTelemetry();
 
-app.MapOpenApi();
-app.MapScalarApiReference(opts =>
-{
-    opts.Title = "ProdutoAPI";
-    opts.Theme = ScalarTheme.DeepSpace;
-});
+// Health endpoint for k8s probes (kept separate from the interactive API
+// docs UI, which is restricted to Development below).
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "produtoapi" }));
 
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference(opts =>
+    {
+        opts.Title = "ProdutoAPI";
+        opts.Theme = ScalarTheme.DeepSpace;
+    });
+}
+
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 app.MapPrometheusScrapingEndpoint();

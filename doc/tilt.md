@@ -79,7 +79,7 @@ O Tilt monitora os diretórios listados no `only` de cada `docker_build`. Ao sal
 | `src/Services/ProdutoAPI/` | `produtoapi` |
 | `src/Services/McpServer/` | `mcpserver` |
 | `src/BuildingBlocks/` | todos os três (é dependência compartilhada) |
-| `infra/k8s/precoapi/*.yaml` | apenas os manifestos do `precoapi` (sem rebuild de imagem) |
+| `infra/k8s/aplicacao/precoapi/*.yaml` | apenas os manifestos do `precoapi` (sem rebuild de imagem) |
 
 Alterações em arquivos YAML não disparam rebuild de imagem — o Tilt faz apenas `kubectl apply` no manifesto modificado.
 
@@ -148,7 +148,7 @@ O Tilt monitora e reinicia port-forwards automaticamente. Se persistir, reinicie
 
 ### Banco de dados não inicializa
 
-O script de init SQL fica em `infra/k8s/postgres-preco/configmap-init.yaml` e `infra/k8s/postgres-produto/configmap-init.yaml`. O script só roda na **primeira inicialização do volume**. Se precisar reinicializar:
+O script de init SQL fica em `infra/k8s/banco/postgres-preco/configmap-init.yaml` e `infra/k8s/banco/postgres-produto/configmap-init.yaml`. O script só roda na **primeira inicialização do volume**. Se precisar reinicializar:
 
 ```bash
 # delete o PVC e o StatefulSet para recriar do zero

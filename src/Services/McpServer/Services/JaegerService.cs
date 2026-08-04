@@ -6,13 +6,11 @@ namespace McpApis.McpServer.Services;
 
 public class JaegerService : IJaegerCollector
 {
-    private readonly string _baseUrl;
     private readonly HttpClient _http;
 
-    public JaegerService(string baseUrl)
+    public JaegerService(HttpClient http)
     {
-        _baseUrl = baseUrl.TrimEnd('/');
-        _http = new HttpClient { BaseAddress = new Uri(_baseUrl) };
+        _http = http;
     }
 
     public async Task<List<string>> GetServicesAsync()

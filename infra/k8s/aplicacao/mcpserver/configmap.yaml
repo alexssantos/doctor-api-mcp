@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcpserver-config
+  namespace: mcp-apis
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  Otel__Endpoint: "http://jaeger.mcp-apis.svc.cluster.local:4317"
+  Otel__CaptureBody: "false"
+  # Data sources
+  # Use FQDNs (http://<service>.<namespace>.svc.cluster.local) to support
+  # services in any namespace — not just the one the MCP Server lives in.
+  DataSources__Jaeger__BaseUrl: "http://jaeger.mcp-apis.svc.cluster.local:16686"
+  DataSources__Prometheus__BaseUrl: "http://prometheus.mcp-apis.svc.cluster.local:9090"
+  DataSources__Kubernetes__Namespace: "mcp-apis"
+  # OpenAPI spec paths probed in order — first 200 response wins
+  DataSources__OpenApiSpecPaths__0: "/openapi/v1.json"
+  DataSources__OpenApiSpecPaths__1: "/openapi/v2.json"
+  DataSources__OpenApiSpecPaths__2: "/swagger/v1/swagger.json"
+  DataSources__OpenApiSpecPaths__3: "/api/v1/openapi.json"
+  DataSources__OpenApiSpecPaths__4: "/api-docs/v1.json"
+  # Indexed services — use FQDNs to reach services across namespaces:
+  #   http://<service>.<namespace>.svc.cluster.local
+  # Short names (http://<service>) only resolve within the same namespace.
+  Services__precoapi: "http://precoapi.mcp-apis.svc.cluster.local"
+  Services__produtoapi: "http://produtoapi.mcp-apis.svc.cluster.local"
+  # Discovery:Mode options: Config | Kubernetes | Both
+  Discovery__Mode: "Config"
+  Discovery__KubernetesLabel: "mcp-apis/indexed"
+  # Dashboard quick-links -- browser-facing URLs (via k3d nginx ingress on host port 8080)
+  Dashboard__Links__Jaeger: "http://jaeger.local:8080"
+  Dashboard__Links__Prometheus: "http://prometheus.local:8080"
+  Dashboard__Links__Grafana: "http://grafana.local:8080"

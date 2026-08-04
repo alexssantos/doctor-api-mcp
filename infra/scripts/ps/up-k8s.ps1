@@ -154,16 +154,16 @@ RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/namespace.yaml"
 Ok "Namespace '$NAMESPACE'"
 
 $manifests = @(
-    'postgres-produto'
-    'postgres-preco'
-    'jaeger'
-    'prometheus'
-    'loki'
-    'promtail'
-    'grafana'
-    'mcpserver'
-    'precoapi'
-    'produtoapi'
+    'banco/postgres-produto'
+    'banco/postgres-preco'
+    'observabilidade/jaeger'
+    'observabilidade/prometheus'
+    'observabilidade/loki'
+    'observabilidade/promtail'
+    'observabilidade/grafana'
+    'aplicacao/mcpserver'
+    'aplicacao/precoapi'
+    'aplicacao/produtoapi'
 )
 foreach ($m in $manifests) {
     $out = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"

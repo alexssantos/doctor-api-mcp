@@ -56,11 +56,21 @@ public class CorrelationHandler : DelegatingHandler
 
         if (httpContext is not null &&
             httpContext.Request.Headers.TryGetValue(CorrelationHeader, out var existing) &&
-            !string.IsNullOrWhiteSpace(existing))
+            IsValidCorrelationId(existing!))
         {
             return existing!;
         }
 
         return Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString();
     }
+
+    // Client-supplied correlation IDs are attacker-controlled input: they end up in
+    // logs and OTel baggage, so bound their length/charset to avoid log injection
+    // (e.g. embedded newlines/control chars forging log lines) and unbounded growth.
+    private const int MaxCorrelationIdLength = 128;
+
+    private static bool IsValidCorrelationId(string value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= MaxCorrelationIdLength
+        && value.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
 }

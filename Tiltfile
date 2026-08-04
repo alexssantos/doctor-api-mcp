@@ -11,35 +11,36 @@ k8s_yaml('infra/k8s/namespace.yaml')
 
 k8s_yaml([
     # Postgres - Preco
-    'infra/k8s/postgres-preco/secret.yaml',
-    'infra/k8s/postgres-preco/configmap-init.yaml',
-    'infra/k8s/postgres-preco/service.yaml',
-    'infra/k8s/postgres-preco/statefulset.yaml',
+    'infra/k8s/banco/postgres-preco/secret.yaml',
+    'infra/k8s/banco/postgres-preco/configmap-init.yaml',
+    'infra/k8s/banco/postgres-preco/service.yaml',
+    'infra/k8s/banco/postgres-preco/statefulset.yaml',
     # Postgres - Produto
-    'infra/k8s/postgres-produto/secret.yaml',
-    'infra/k8s/postgres-produto/configmap-init.yaml',
-    'infra/k8s/postgres-produto/service.yaml',
-    'infra/k8s/postgres-produto/statefulset.yaml',
+    'infra/k8s/banco/postgres-produto/secret.yaml',
+    'infra/k8s/banco/postgres-produto/configmap-init.yaml',
+    'infra/k8s/banco/postgres-produto/service.yaml',
+    'infra/k8s/banco/postgres-produto/statefulset.yaml',
     # Jaeger
-    'infra/k8s/jaeger/deployment.yaml',
-    'infra/k8s/jaeger/service.yaml',
+    'infra/k8s/observabilidade/jaeger/deployment.yaml',
+    'infra/k8s/observabilidade/jaeger/service.yaml',
     # Prometheus
-    'infra/k8s/prometheus/configmap.yaml',
-    'infra/k8s/prometheus/deployment.yaml',
-    'infra/k8s/prometheus/service.yaml',
-    'infra/k8s/prometheus/ingress.yaml',
+    'infra/k8s/observabilidade/prometheus/configmap.yaml',
+    'infra/k8s/observabilidade/prometheus/deployment.yaml',
+    'infra/k8s/observabilidade/prometheus/service.yaml',
+    'infra/k8s/observabilidade/prometheus/ingress.yaml',
     # Loki
-    'infra/k8s/loki/configmap.yaml',
-    'infra/k8s/loki/deployment.yaml',
-    'infra/k8s/loki/service.yaml',
+    'infra/k8s/observabilidade/loki/configmap.yaml',
+    'infra/k8s/observabilidade/loki/deployment.yaml',
+    'infra/k8s/observabilidade/loki/service.yaml',
     # Promtail
-    'infra/k8s/promtail/configmap.yaml',
-    'infra/k8s/promtail/daemonset.yaml',
+    'infra/k8s/observabilidade/promtail/configmap.yaml',
+    'infra/k8s/observabilidade/promtail/daemonset.yaml',
     # Grafana
-    'infra/k8s/grafana/configmap-datasources.yaml',
-    'infra/k8s/grafana/deployment.yaml',
-    'infra/k8s/grafana/service.yaml',
-    'infra/k8s/grafana/ingress.yaml',
+    'infra/k8s/observabilidade/grafana/secret.yaml',
+    'infra/k8s/observabilidade/grafana/configmap-datasources.yaml',
+    'infra/k8s/observabilidade/grafana/deployment.yaml',
+    'infra/k8s/observabilidade/grafana/service.yaml',
+    'infra/k8s/observabilidade/grafana/ingress.yaml',
 ])
 
 k8s_resource('postgres-preco',  port_forwards=['5433:5432'])
@@ -94,22 +95,22 @@ docker_build(
 
 k8s_yaml([
     # PrecoAPI
-    'infra/k8s/precoapi/secret.yaml',
-    'infra/k8s/precoapi/configmap.yaml',
-    'infra/k8s/precoapi/deployment.yaml',
-    'infra/k8s/precoapi/service.yaml',
-    'infra/k8s/precoapi/ingress.yaml',
+    'infra/k8s/aplicacao/precoapi/secret.yaml',
+    'infra/k8s/aplicacao/precoapi/configmap.yaml',
+    'infra/k8s/aplicacao/precoapi/deployment.yaml',
+    'infra/k8s/aplicacao/precoapi/service.yaml',
+    'infra/k8s/aplicacao/precoapi/ingress.yaml',
     # ProdutoAPI
-    'infra/k8s/produtoapi/secret.yaml',
-    'infra/k8s/produtoapi/configmap.yaml',
-    'infra/k8s/produtoapi/deployment.yaml',
-    'infra/k8s/produtoapi/service.yaml',
-    'infra/k8s/produtoapi/ingress.yaml',
+    'infra/k8s/aplicacao/produtoapi/secret.yaml',
+    'infra/k8s/aplicacao/produtoapi/configmap.yaml',
+    'infra/k8s/aplicacao/produtoapi/deployment.yaml',
+    'infra/k8s/aplicacao/produtoapi/service.yaml',
+    'infra/k8s/aplicacao/produtoapi/ingress.yaml',
     # McpServer
-    'infra/k8s/mcpserver/rbac.yaml',
-    'infra/k8s/mcpserver/configmap.yaml',
-    'infra/k8s/mcpserver/deployment.yaml',
-    'infra/k8s/mcpserver/service.yaml',
+    'infra/k8s/aplicacao/mcpserver/rbac.yaml',
+    'infra/k8s/aplicacao/mcpserver/configmap.yaml',
+    'infra/k8s/aplicacao/mcpserver/deployment.yaml',
+    'infra/k8s/aplicacao/mcpserver/service.yaml',
 ])
 
 k8s_resource('precoapi',

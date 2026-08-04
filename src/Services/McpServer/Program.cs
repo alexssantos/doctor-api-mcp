@@ -1,3 +1,5 @@
+using McpApis.BuildingBlocks.Observability;
+using McpApis.McpServer.Api;
 using McpApis.McpServer.Services;
 using McpApis.McpServer.Services.Contracts;
 using McpApis.McpServer.Tools;
@@ -5,12 +7,28 @@ using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Observability (OTel traces + Prometheus metrics for the MCP Server itself)
+builder.Services.AddObservability("McpServer", builder.Configuration);
+
 // Configuration
 var jaegerBaseUrl = builder.Configuration["DataSources:Jaeger:BaseUrl"] ?? "http://jaeger:16686";
+var prometheusBaseUrl = builder.Configuration["DataSources:Prometheus:BaseUrl"] ?? "http://prometheus:9090";
 var k8sNamespace = builder.Configuration["DataSources:Kubernetes:Namespace"] ?? "mcp-apis";
 
 // Core collectors
-builder.Services.AddSingleton<IJaegerCollector>(new JaegerService(jaegerBaseUrl));
+// Typed HttpClients via IHttpClientFactory: avoids socket exhaustion / stale-DNS
+// issues that come from manually `new`-ing up long-lived HttpClient instances,
+// and gives us a single place to configure timeouts.
+builder.Services.AddHttpClient<IJaegerCollector, JaegerService>(client =>
+{
+    client.BaseAddress = new Uri(jaegerBaseUrl.TrimEnd('/'));
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddHttpClient<IPrometheusCollector, PrometheusService>(client =>
+{
+    client.BaseAddress = new Uri(prometheusBaseUrl.TrimEnd('/'));
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 builder.Services.AddSingleton<IKubernetesCollector>(new KubernetesService(k8sNamespace));
 
 // Service registry (populated at startup after discovery + validation)
@@ -19,11 +37,17 @@ builder.Services.AddSingleton<IServiceRegistry>(registry);
 builder.Services.AddSingleton(registry);
 
 // OpenAPI collector depends on registry
-builder.Services.AddSingleton<IOpenApiCollector, OpenApiService>();
+builder.Services.AddHttpClient<IOpenApiCollector, OpenApiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // Discovery and validation
 builder.Services.AddSingleton<IServiceDiscovery, ServiceDiscoveryService>();
-builder.Services.AddSingleton<IServiceValidator, ServiceValidator>();
+builder.Services.AddHttpClient<IServiceValidator, ServiceValidator>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // Register MCP Server with all tools
 builder.Services
@@ -42,17 +66,30 @@ builder.Services
     .WithTools<ExplainApiTool>()
     .WithTools<GetHealthTool>()
     .WithTools<FindDependenciesTool>()
-    .WithTools<FindDataOriginTool>();
+    .WithTools<FindDataOriginTool>()
+    .WithTools<QueryMetricsTool>();
 
 var app = builder.Build();
 
 // Run service discovery and validation at startup
 await RunServiceDiscoveryAsync(app);
 
+// Serve the React dashboard (built into wwwroot/dashboard) at /dashboard
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.UseBodyCaptureTelemetry();
+
 app.MapMcp();
 
-// Health endpoint
+app.MapDashboardApi();
+
+app.MapFallbackToFile("/dashboard", "dashboard/index.html");
+app.MapFallbackToFile("/dashboard/{**slug}", "dashboard/index.html");
+
+// Health + metrics endpoints
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "mcp-apis-server" }));
+app.MapPrometheusScrapingEndpoint();
 
 app.Run();
 

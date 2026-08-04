@@ -1,3 +1,10 @@
+FROM node:22-alpine AS dashboard-build
+WORKDIR /dashboard
+COPY src/Services/McpServer/dashboard/package*.json ./
+RUN npm ci
+COPY src/Services/McpServer/dashboard/ ./
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
 
@@ -14,6 +21,10 @@ RUN dotnet restore src/Services/McpServer/McpApis.McpServer.csproj
 
 # Copy source
 COPY src/Services/McpServer/ ./src/Services/McpServer/
+
+# Bring in the pre-built React dashboard (Vite outDir already points at wwwroot/dashboard,
+# but the dashboard/ source isn't compiled by MSBuild, so we overlay the built assets here)
+COPY --from=dashboard-build /wwwroot/dashboard ./src/Services/McpServer/wwwroot/dashboard
 
 # Publish
 RUN dotnet publish src/Services/McpServer/McpApis.McpServer.csproj \
@@ -33,3 +44,4 @@ ENV ASPNETCORE_URLS=http://+:4000
 EXPOSE 4000
 
 ENTRYPOINT ["dotnet", "McpApis.McpServer.dll"]
+

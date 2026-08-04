@@ -203,16 +203,19 @@ mcp-apis/
 │
 ├── k8s/                                   # Manifestos Kubernetes (kubectl apply -f)
 │   ├── namespace.yaml
-│   ├── precoapi/                          # configmap, deployment, ingress, secret, service
-│   ├── produtoapi/
-│   ├── mcpserver/                         # + rbac.yaml (ServiceAccount mcp-reader)
-│   ├── postgres-preco/                    # StatefulSet + configmap-init + secret + service
-│   ├── postgres-produto/
-│   ├── jaeger/
-│   ├── prometheus/                        # + configmap com prometheus.yml
-│   ├── loki/                              # + configmap com loki.yaml
-│   ├── promtail/                          # DaemonSet
-│   └── grafana/                           # + configmap-datasources.yaml
+│   ├── aplicacao/                         # Serviços da aplicação (APIs + MCP Server)
+│   │   ├── precoapi/                      # configmap, deployment, ingress, secret, service
+│   │   ├── produtoapi/
+│   │   └── mcpserver/                     # + rbac.yaml (ServiceAccount mcp-reader)
+│   ├── banco/                             # Bancos de dados (PostgreSQL)
+│   │   ├── postgres-preco/                # StatefulSet + configmap-init + secret + service
+│   │   └── postgres-produto/
+│   └── observabilidade/                   # Stack de observabilidade complementar ao MCP
+│       ├── jaeger/
+│       ├── prometheus/                    # + configmap com prometheus.yml
+│       ├── loki/                          # + configmap com loki.yaml
+│       ├── promtail/                      # DaemonSet
+│       └── grafana/                       # + configmap-datasources.yaml
 │
 ├── helm/                                  # Charts Helm (alternativa aos manifestos k8s/)
 │   ├── mcpserver/
@@ -314,7 +317,7 @@ Controlado pela variável `Discovery__Mode` (ou `Discovery:Mode` no `appsettings
 Cada entrada em `Services` vira um serviço candidato. A **chave** é o alias que o MCP expõe para o LLM (aparece nas tools e nos logs); o **valor** é a URL real do Service K8s — os dois não precisam ser iguais:
 
 ```yaml
-# infra/k8s/mcpserver/configmap.yaml
+# infra/k8s/aplicacao/mcpserver/configmap.yaml
 #
 #   chave (alias MCP)          valor (URL do Service K8s)
 #         ↓                              ↓
@@ -350,7 +353,7 @@ Discovery__KubernetesLabel: "mcp-apis/indexed"
 
 **Anotar um serviço para ser descoberto:**
 ```yaml
-# infra/k8s/<meuservico>/service.yaml
+# infra/k8s/aplicacao/<meuservico>/service.yaml
 metadata:
   labels:
     mcp-apis/indexed: "true"
@@ -358,7 +361,7 @@ metadata:
     mcp-apis/base-url: "http://meuservico"
 ```
 
-> ⚠️ Requer permissão `list` em `services` para o `ServiceAccount` do McpServer. O RBAC em `infra/k8s/mcpserver/rbac.yaml` já contempla essa permissão.
+> ⚠️ Requer permissão `list` em `services` para o `ServiceAccount` do McpServer. O RBAC em `infra/k8s/aplicacao/mcpserver/rbac.yaml` já contempla essa permissão.
 
 ---
 

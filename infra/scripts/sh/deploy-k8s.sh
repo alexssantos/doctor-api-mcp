@@ -75,16 +75,16 @@ k3d image import precoapi:latest produtoapi:latest mcpserver:latest --cluster "$
 echo "[LIST] Applying Kubernetes manifests..."
 
 kubectl apply -f "${REPO_ROOT}/infra/k8s/namespace.yaml"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/postgres-produto/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/postgres-preco/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/jaeger/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/prometheus/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/loki/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/promtail/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/grafana/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/mcpserver/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/precoapi/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/produtoapi/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/banco/postgres-produto/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/banco/postgres-preco/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/jaeger/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/prometheus/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/loki/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/promtail/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/grafana/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/mcpserver/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/precoapi/"
+kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/produtoapi/"
 
 if [[ "$CAPTURE_BODY" == "true" ]]; then
   kubectl patch configmap precoapi-config   -n "${NAMESPACE}" --type merge -p '{"data":{"Otel__CaptureBody":"true"}}'

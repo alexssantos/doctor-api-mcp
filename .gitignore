@@ -47,3 +47,7 @@ x86/
 **/obj/**
 **/bin/**
 **/bin
+
+### Dashboard client (React + Vite)
+**/dashboard/node_modules/
+src/Services/McpServer/wwwroot/

@@ -77,7 +77,7 @@ Discovery__Mode:           "Kubernetes"
 Discovery__KubernetesLabel: "mcp-apis/indexed"
 ```
 
-> ⚠️ Este modo requer que a `ServiceAccount` do MCP Server tenha permissão `list` em `services` no namespace. O RBAC já está configurado em `infra/k8s/mcpserver/rbac.yaml`.
+> ⚠️ Este modo requer que a `ServiceAccount` do MCP Server tenha permissão `list` em `services` no namespace. O RBAC já está configurado em `infra/k8s/aplicacao/mcpserver/rbac.yaml`.
 
 ### Modo `Both`
 

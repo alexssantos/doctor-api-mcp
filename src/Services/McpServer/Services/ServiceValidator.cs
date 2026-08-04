@@ -20,9 +20,9 @@ public class ServiceValidator : IServiceValidator
     private readonly ILogger<ServiceValidator> _logger;
     private readonly string[] _openApiPaths;
 
-    public ServiceValidator(IConfiguration config, ILogger<ServiceValidator> logger)
+    public ServiceValidator(HttpClient http, IConfiguration config, ILogger<ServiceValidator> logger)
     {
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        _http = http;
         _logger = logger;
         _openApiPaths = config.GetSection("DataSources:OpenApiSpecPaths").Get<string[]>()
             ?? DefaultOpenApiPaths;
