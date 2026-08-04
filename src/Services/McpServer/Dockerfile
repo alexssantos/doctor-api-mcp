@@ -20,6 +20,7 @@ COPY src/Services/McpServer/McpApis.McpServer.csproj ./src/Services/McpServer/
 RUN dotnet restore src/Services/McpServer/McpApis.McpServer.csproj
 
 # Copy source
+COPY src/BuildingBlocks/ ./src/BuildingBlocks/
 COPY src/Services/McpServer/ ./src/Services/McpServer/
 
 # Bring in the pre-built React dashboard (Vite outDir already points at wwwroot/dashboard,
