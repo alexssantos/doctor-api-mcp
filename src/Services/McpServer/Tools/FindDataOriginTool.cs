@@ -14,18 +14,30 @@ public class FindDataOriginTool
         IOpenApiCollector openApi,
         IJaegerCollector jaeger,
         IKubernetesCollector k8s,
+        IApplicationCatalog catalog,
         [Description("Service name (e.g. produtoapi)")] string serviceName,
         [Description("Route path (e.g. /api/produtos/{id})")] string route)
     {
+        if (!ToolGuard.EnsureEnabled(catalog, serviceName, out var error))
+            return error;
+
         // Get routes for context
         var routes = await openApi.GetRoutesAsync(serviceName);
         var matchingRoute = routes.FirstOrDefault(r =>
             r.Path.Equals(route, StringComparison.OrdinalIgnoreCase));
 
-        // Get Jaeger services list
-        var jaegerServices = await jaeger.GetServicesAsync();
-        var jaegerServiceName = jaegerServices.FirstOrDefault(s =>
-            s.Equals(serviceName, StringComparison.OrdinalIgnoreCase)) ?? serviceName;
+        // Prefer the raw OTel name from the catalog (Jaeger is case-sensitive);
+        // fall back to a case-insensitive match against Jaeger's service list.
+        string? jaegerServiceName = null;
+        if (catalog.TryGet(serviceName, out var app))
+            jaegerServiceName = app.OtelServiceName;
+
+        if (jaegerServiceName is null)
+        {
+            var jaegerServices = await jaeger.GetServicesAsync();
+            jaegerServiceName = jaegerServices.FirstOrDefault(s =>
+                s.Equals(serviceName, StringComparison.OrdinalIgnoreCase)) ?? serviceName;
+        }
 
         // Get traces for this route
         var spans = await jaeger.GetTraceSpansAsync(jaegerServiceName, limit: 10);

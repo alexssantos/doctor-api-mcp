@@ -13,13 +13,26 @@ public class ExplainApiTool
     public static async Task<string> Execute(
         IOpenApiCollector openApi,
         IJaegerCollector jaeger,
+        IApplicationCatalog catalog,
         [Description("Service name (e.g. precoapi, produtoapi)")] string serviceName)
     {
-        var routes = await openApi.GetRoutesAsync(serviceName);
-        var services = await jaeger.GetServicesAsync();
+        if (!ToolGuard.EnsureEnabled(catalog, serviceName, out var error))
+            return error;
 
-        var jaegerServiceName = services.FirstOrDefault(s =>
-            s.Equals(serviceName, StringComparison.OrdinalIgnoreCase)) ?? serviceName;
+        var routes = await openApi.GetRoutesAsync(serviceName);
+
+        // Prefer the raw OTel name from the catalog (Jaeger is case-sensitive);
+        // fall back to a case-insensitive match against Jaeger's service list.
+        string? jaegerServiceName = null;
+        if (catalog.TryGet(serviceName, out var app))
+            jaegerServiceName = app.OtelServiceName;
+
+        if (jaegerServiceName is null)
+        {
+            var services = await jaeger.GetServicesAsync();
+            jaegerServiceName = services.FirstOrDefault(s =>
+                s.Equals(serviceName, StringComparison.OrdinalIgnoreCase)) ?? serviceName;
+        }
 
         List<object>? recentTraces = null;
         try
