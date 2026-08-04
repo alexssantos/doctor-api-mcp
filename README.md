@@ -12,6 +12,7 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
 - [Estrutura de Arquivos](#estrutura-de-arquivos)
 - [MCP Server — Ferramentas](#mcp-server--ferramentas)
 - [Configuração do MCP Server](#configuração-do-mcp-server)
+- [Dashboard](#dashboard)
 - [Observabilidade](#observabilidade)
 - [Kubernetes](#kubernetes)
 - [Helm Charts](#helm-charts)
@@ -34,17 +35,20 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  McpServer  (port 4000)                                             │
-│  • 7 ferramentas MCP                                                │
+│  • 8 ferramentas MCP                                                │
+│  • Dashboard React em /dashboard                                    │
 │  • Consulta Kubernetes API (in-cluster, read-only)                  │
 │  • Consulta Jaeger API (traces e dependências)                      │
+│  • Consulta Prometheus API (métricas)                               │
 │  • Consulta OpenAPI de cada serviço                                 │
-└──────────┬───────────────────────────┬──────────────────────────────┘
-           │                           │
-           ▼                           ▼
-┌──────────────────────┐   ┌──────────────────────────────────────────┐
-│  Kubernetes API      │   │  Jaeger  (port 16686)                    │
-│  (in-cluster RBAC)   │   │  Recebe traces via OTLP (port 4317)      │
-└──────────────────────┘   └──────────────────────────────────────────┘
+└──────────┬───────────────────────────┬─────────────────────────────┬┘
+           │                           │                             │
+           ▼                           ▼                             ▼
+┌──────────────────────┐   ┌──────────────────────┐   ┌──────────────────────┐
+│  Kubernetes API      │   │  Jaeger             │   │  Prometheus          │
+│  (in-cluster RBAC)   │   │  (port 16686)       │   │  (port 9090)         │
+│                      │   │  OTLP (port 4317)   │   │  Scrape /metrics     │
+└──────────────────────┘   └──────────────────────┘   └──────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Namespace: mcp-apis                                                 │
@@ -65,7 +69,7 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
 2. Para cada produto, chama `PrecoAPI GET /api/prices/{productId}` via `PriceClient` (HttpClient tipado)
 3. Retorna produto enriquecido com preço
 4. Ambas as APIs exportam traces OTLP para Jaeger e métricas Prometheus
-5. O MCP Server usa esses dados para responder perguntas de LLMs sobre o sistema
+5. O MCP Server (e seu Dashboard) usam esses dados para responder perguntas de LLMs e exibir informações em tempo real
 
 ---
 
@@ -255,7 +259,7 @@ mcp-apis/
 
 ## MCP Server — Ferramentas
 
-O McpServer expõe 7 ferramentas para agentes de IA. Todas recebem dependências via injeção (DI do .NET — o SDK MCP resolve automaticamente parâmetros que são serviços registrados).
+O McpServer expõe 8 ferramentas para agentes de IA. Todas recebem dependências via injeção (DI do .NET — o SDK MCP resolve automaticamente parâmetros que são serviços registrados).
 
 | Ferramenta | Descrição | Fontes de Dados |
 |---|---|---|
@@ -266,6 +270,7 @@ O McpServer expõe 7 ferramentas para agentes de IA. Todas recebem dependências
 | `get_health` | Verifica a saúde de um serviço via estado dos pods (ready, restarts) | Kubernetes API |
 | `find_dependencies` | Mapa de dependências entre serviços usando o grafo do Jaeger | Jaeger `/api/dependencies` |
 | `find_data_origin` | Rastreia a origem dos dados de uma rota: API → chamadas HTTP → queries SQL | OpenAPI + Jaeger + Kubernetes |
+| `query_metrics` | Executa queries PromQL arbitrárias contra Prometheus (instant ou range) | Prometheus `/api/v1/query*` |
 
 ### Registro das ferramentas
 
@@ -421,6 +426,147 @@ Se o serviço expõe a spec em outro caminho (ex: `/swagger/v1/swagger.json`), b
 | `Services__<nome>`                       | —                      | URL base de um serviço (usado no modo `Config` ou `Both`)       |
 
 > 📄 Documentação detalhada: [`doc/features/003_service_discovery_and_validation.md`](doc/features/003_service_discovery_and_validation.md)
+
+---
+
+## Dashboard
+
+O McpServer também expõe um **Dashboard web interativo** em `/dashboard` que oferece uma interface visual para monitorar o cluster, visualizar métricas e acessar ferramentas de observabilidade.
+
+### Acesso
+
+| Ambiente | URL |
+|---|---|
+| Desenvolvimento (Tilt) | `http://localhost:4000/dashboard` |
+| Kubernetes (Ingress) | `http://mcpserver.local:8080/dashboard` |
+| Port-forward | `http://localhost:4000/dashboard` |
+
+### Funcionalidades
+
+**1. Header**
+- **Status de Saúde:** badge em tempo real mostrando a saúde geral do cluster
+- **Modo Escuro/Claro:** toggle com sincronização com preferência do sistema
+- **Atualização Manual:** botão refresh que recarrega dados de todos os painéis
+- **Horário da Última Atualização:** timestamp local
+
+**2. Quick Links**
+- Links rápidos para **Jaeger**, **Prometheus** e **Grafana** abrindo em novas abas
+- Usa as URLs configuradas em `Dashboard:Links` (acessíveis via navegador)
+- Ícones temáticos com cores que remetem a cada ferramenta
+
+**3. Cards de Estatísticas**
+- **Serviços Indexados:** número total de serviços descobertos pelo MCP
+- **Pods Prontos:** percentual de pods em estado `Running` e `Ready`
+- **Deployments Prontos:** percentual de deployments com todas as réplicas ready
+- **Saúde do Cluster:** status geral agregado (verde/amarelo/vermelho)
+
+**4. Grid de Serviços**
+- Lista interativa de todos os serviços registrados
+- Por serviço, mostra:
+  - **Nome e Status de Saúde** (badge Saudável/Degradado/Sem Pods)
+  - **URL Base:** endpoint do serviço
+  - **OpenAPI:** badge com link para a spec OpenAPI
+  - **Pod Count:** número de pods running
+  - **Restarts:** contador de restarts (visível apenas se > 0)
+- Click em um serviço o seleciona para visualizar seus traces e métricas
+
+**5. Painel de Traces**
+- Mostra os **12 traces mais recentes** do serviço selecionado via Jaeger
+- Para cada trace:
+  - **Duração:** tempo total da request (ms/s)
+  - **Span Count:** número de spans
+  - **Timestamp:** quando ocorreu
+- Botão **"Abrir no Jaeger"** redireciona para a busca completa no Jaeger UI
+
+**6. Painel de Dependências**
+- **Grafo de serviços:** mostra que serviço chama qual outro
+- Lista os **pais → filhos** com ícone `→` representando a direção da chamada
+- **Call Count:** quantas vezes a chamada ocorreu (agregado)
+- Ajuda a entender o fluxo de dados na arquitetura
+
+**7. Painel de Métricas (PromQL)**
+- **Presets:** dropdown com queries pré-configuradas:
+  - `up` — status do serviço (1=up, 0=down)
+  - `requestRate` — taxa de requests por segundo
+  - `errorRate` — taxa de erros (HTTP 5xx)
+  - `memory` — uso de memória do container
+  - `custom` — campo livre para digitar PromQL
+- **Série Temporal:** gráfico em linha mostrando 30 minutos de histórico com resolução de 15s
+- Renderizado via **recharts** com grid, eixos e tooltips interativas
+
+### Stack Técnico
+
+**Frontend (em `src/Services/McpServer/dashboard/`):**
+- **React 19** + TypeScript 5
+- **Vite 8** (rolldown) — bundler com dev server + build otimizado
+- **Tailwind CSS v4** com `@tailwindcss/vite` plugin — CSS-first, tokens OKLCH, dark mode
+- **Shadcn-style components** — componentes hand-built seguindo padrões shadcn (cva variants, Radix primitives)
+- **TanStack React Query v5** — gerenciamento de estado das requisições, refetch automático a cada 15s
+- **Recharts** — visualização de gráficos (LineChart com tooltips)
+- **Lucide React** — ícones (Activity, RefreshCw, Moon, Sun, Server, HeartPulse, etc.)
+
+**Backend (em `src/Services/McpServer/`):**
+- **IPrometheusCollector / PrometheusService** — wrapper da Prometheus HTTP API (`/api/v1/query`, `/api/v1/query_range`, `/api/v1/targets`)
+- **DashboardEndpoints.cs** — 7 rotas REST que proxificam os dados:
+  - `GET /api/dashboard/overview` — cluster summary (pods, deployments, saúde)
+  - `GET /api/dashboard/services` — lista de serviços com health por pod
+  - `GET /api/dashboard/traces?service=&limit=15` — traces do Jaeger agrupados
+  - `GET /api/dashboard/dependencies` — grafo do Jaeger
+  - `GET /api/dashboard/metrics?query=` — instant query do Prometheus
+  - `GET /api/dashboard/metrics/range?query=&minutes=30&step=15s` — range query do Prometheus
+  - `GET /api/dashboard/links` — URLs dos dashboards externos (Jaeger, Prometheus, Grafana)
+- **Static Files:** Vite build output em `wwwroot/dashboard/`, servido via `UseDefaultFiles()` + `UseStaticFiles()` + SPA fallback routes
+
+### Configuração
+
+**Em `appsettings.json` (credenciais do servidor):**
+```json
+{
+  "DataSources": {
+    "Prometheus": {
+      "BaseUrl": "http://prometheus.mcp-apis.svc.cluster.local:9090"
+    }
+  },
+  "Dashboard": {
+    "Links": {
+      "Jaeger": "http://jaeger.local:8080",
+      "Prometheus": "http://prometheus.local:8080",
+      "Grafana": "http://grafana.local:8080"
+    }
+  }
+}
+```
+
+> ℹ️ As URLs em `DataSources.*` são **server-side** (cluster-internal, FQDNs) para o backend acessar as APIs.
+> As URLs em `Dashboard:Links` são **browser-facing** (passadas ao frontend) — devem ser acessíveis do seu navegador host (via Ingress/port-forward).
+
+**Em `infra/k8s/aplicacao/mcpserver/configmap.yaml`:**
+```yaml
+data:
+  DataSources__Prometheus__BaseUrl: "http://prometheus.mcp-apis.svc.cluster.local:9090"
+  Dashboard__Links__Jaeger: "http://jaeger.local:8080"
+  Dashboard__Links__Prometheus: "http://prometheus.local:8080"
+  Dashboard__Links__Grafana: "http://grafana.local:8080"
+```
+
+### Desenvolvimento Local
+
+**Build do frontend:**
+```bash
+cd src/Services/McpServer/dashboard
+npm ci
+npm run build      # output em ../wwwroot/dashboard
+```
+
+**Dev server com hot reload:**
+```bash
+npm run dev        # localhost:5173, proxy /api/dashboard → localhost:4000
+```
+
+Após `npm run dev`, abra o navegador em `http://localhost:5173` — o Vite vai proxificar as chamadas de API para o backend em `localhost:4000` (configure `-CaptureBody` ou Tilt para que o McpServer esteja rodando em background).
+
+**Build Docker:**
+O `Dockerfile` do McpServer inclui um estágio `dashboard-build` (node:22-alpine) que constrói o React e overlay o output (`wwwroot/dashboard`) no estágio SDK do .NET antes do `dotnet publish`.
 
 ---
 
@@ -627,6 +773,7 @@ A captura de body HTTP nos spans OTLP está desabilitada por padrão para evitar
 | PrecoAPI | `localhost:5001` | `http://localhost:5001/scalar/v1` |
 | ProdutoAPI | `localhost:5002` | `http://localhost:5002/scalar/v1` |
 | McpServer | `localhost:4000` | `http://localhost:4000/health` |
+| **Dashboard** | `localhost:4000` | **`http://localhost:4000/dashboard`** |
 | Jaeger UI | `localhost:16686` | `http://localhost:16686` |
 | Prometheus | `localhost:9090` | `http://localhost:9090` |
 | Grafana | `localhost:3000` | `http://localhost:3000` (admin/admin) |
@@ -695,6 +842,7 @@ tilt down  # encerra e remove os recursos do cluster
 | PrecoAPI | `http://localhost:8081` |
 | ProdutoAPI | `http://localhost:8082` |
 | McpServer | `http://localhost:4000` |
+| **Dashboard** | **`http://localhost:4000/dashboard`** |
 | Grafana | `http://localhost:3000` |
 | Prometheus | `http://localhost:9090` |
 | Jaeger UI | `http://localhost:16686` |
