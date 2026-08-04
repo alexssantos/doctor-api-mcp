@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 // ---------------------------------------------------------------------------
 // Types (mirrors McpApis.McpServer.Api.DashboardEndpoints DTOs)
@@ -69,6 +69,45 @@ export interface PrometheusVectorResult {
   }
 }
 
+// Feature 004: auto-discovered application inventory + indexing toggle
+export type DiscoverySource = 'deployment' | 'network' | 'otel' | 'config'
+
+export interface OpenApiInfo {
+  validated: boolean
+  path: string | null
+  failures: string[]
+}
+
+export interface DiscoveredApplication {
+  name: string
+  namespace: string | null
+  sources: DiscoverySource[]
+  deploymentName: string | null
+  kubernetesServiceName: string | null
+  otelServiceName: string | null
+  baseUrl: string | null
+  hasReadyEndpoints: boolean
+  openApi: OpenApiInfo
+  enabled: boolean
+  lockedDisabled: boolean
+  firstSeen: string
+  lastSeen: string
+  missing: boolean
+  health: ServiceHealth | null
+}
+
+export interface ApplicationsResponse {
+  generatedAt: string
+  lastScanAt: string | null
+  applications: DiscoveredApplication[]
+}
+
+export interface IndexingResponse {
+  name: string
+  enabled: boolean
+  persisted: boolean
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
@@ -78,6 +117,19 @@ async function getJson<T>(url: string): Promise<T> {
   if (!response.ok) {
     const body = await response.text().catch(() => '')
     throw new Error(`${response.status} ${response.statusText}: ${body}`)
+  }
+  return (await response.json()) as T
+}
+
+async function sendJson<T>(url: string, method: 'PUT' | 'POST', body?: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`${response.status} ${response.statusText}: ${text}`)
   }
   return (await response.json()) as T
 }
@@ -121,5 +173,61 @@ export function useMetricsRange(query?: string, minutes = 30, step = '15s') {
       ),
     enabled: Boolean(query),
     retry: 0,
+  })
+}
+
+export function useApplications() {
+  return useQuery({
+    queryKey: ['applications'],
+    queryFn: () => getJson<ApplicationsResponse>(`${API_BASE}/applications`),
+  })
+}
+
+export function useSetIndexing() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, enabled }: { name: string; enabled: boolean }) =>
+      sendJson<IndexingResponse>(
+        `${API_BASE}/applications/${encodeURIComponent(name)}/indexing`,
+        'PUT',
+        { enabled },
+      ),
+    // Optimistic update: flip the switch immediately, roll back on error.
+    onMutate: async ({ name, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: ['applications'] })
+      const previous = queryClient.getQueryData<ApplicationsResponse>(['applications'])
+      if (previous) {
+        queryClient.setQueryData<ApplicationsResponse>(['applications'], {
+          ...previous,
+          applications: previous.applications.map((app) =>
+            app.name === name ? { ...app, enabled } : app,
+          ),
+        })
+      }
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['applications'], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['applications'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    },
+  })
+}
+
+export function useRescanDiscovery() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => sendJson<{ status: string }>(`${API_BASE}/discovery/rescan`, 'POST'),
+    onSettled: () => {
+      // The scan runs async in the backend; give it a moment before refreshing.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['applications'] })
+        queryClient.invalidateQueries({ queryKey: ['overview'] })
+      }, 2000)
+    },
   })
 }

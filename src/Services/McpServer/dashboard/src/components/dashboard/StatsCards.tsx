@@ -42,11 +42,13 @@ function StatCard({
 
 export function StatsCards({
   cluster,
-  servicesCount,
+  applicationsCount,
+  enabledCount,
   isLoading,
 }: {
   cluster?: ClusterSummary
-  servicesCount: number
+  applicationsCount: number
+  enabledCount: number
   isLoading: boolean
 }) {
   const podsReadyPct = cluster && cluster.totalPods > 0 ? Math.round((cluster.readyPods / cluster.totalPods) * 100) : null
@@ -54,9 +56,9 @@ export function StatsCards({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
-        label="Serviços indexados"
-        value={String(servicesCount)}
-        hint="Registrados via discovery"
+        label="Aplicações descobertas"
+        value={String(applicationsCount)}
+        hint={`${enabledCount} habilitada${enabledCount !== 1 ? 's' : ''} para o MCP`}
         icon={Server}
         isLoading={isLoading}
         accent="bg-chart-1/15 text-chart-1"
