@@ -7,11 +7,13 @@ namespace McpApis.McpServer.Services;
 public class OpenApiService : IOpenApiCollector
 {
     private readonly IServiceRegistry _registry;
+    private readonly IApplicationCatalog _catalog;
     private readonly HttpClient _http;
 
-    public OpenApiService(IServiceRegistry registry, HttpClient http)
+    public OpenApiService(IServiceRegistry registry, IApplicationCatalog catalog, HttpClient http)
     {
         _registry = registry;
+        _catalog = catalog;
         _http = http;
     }
 
@@ -20,6 +22,20 @@ public class OpenApiService : IOpenApiCollector
         if (!_registry.TryGet(serviceName, out var endpoint))
         {
             var known = string.Join(", ", _registry.GetAll().Keys);
+
+            // Distinguish "disabled by the operator" and "discovered but not
+            // indexable" from a truly unknown name so the LLM gets an actionable hint.
+            if (_catalog.TryGet(serviceName, out var app))
+            {
+                if (!app.Enabled)
+                    return $"Service '{app.Name}' is disabled for MCP indexing. " +
+                           $"Enable it in the dashboard (/dashboard). Available: {known}";
+
+                if (!app.OpenApi.Validated)
+                    return $"Service '{app.Name}' has no valid OpenAPI spec: " +
+                           $"{string.Join("; ", app.OpenApi.Failures)}. Available: {known}";
+            }
+
             return $"Unknown service: {serviceName}. Available: {known}";
         }
 

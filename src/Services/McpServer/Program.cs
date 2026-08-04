@@ -31,23 +31,28 @@ builder.Services.AddHttpClient<IPrometheusCollector, PrometheusService>(client =
 });
 builder.Services.AddSingleton<IKubernetesCollector>(new KubernetesService(k8sNamespace));
 
-// Service registry (populated at startup after discovery + validation)
-var registry = new ServiceRegistry();
-builder.Services.AddSingleton<IServiceRegistry>(registry);
-builder.Services.AddSingleton(registry);
+// Application catalog: live inventory of everything discovered in the cluster.
+// The legacy registry is a read-only view of it filtered by enabled + validated,
+// so spec-based tools honor the dashboard indexing toggle automatically.
+builder.Services.AddSingleton<IApplicationCatalog, ApplicationCatalog>();
+builder.Services.AddSingleton<IServiceRegistry, ServiceRegistry>();
+builder.Services.AddSingleton<IIndexingStateStore, KubernetesIndexingStateStore>();
 
-// OpenAPI collector depends on registry
+// OpenAPI collector depends on registry + catalog
 builder.Services.AddHttpClient<IOpenApiCollector, OpenApiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
-// Discovery and validation
-builder.Services.AddSingleton<IServiceDiscovery, ServiceDiscoveryService>();
+// Discovery: validation (typed client) + orchestrator (singleton, resolves the
+// validator/Jaeger clients through scopes so HttpClient handlers keep rotating)
 builder.Services.AddHttpClient<IServiceValidator, ServiceValidator>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+builder.Services.AddSingleton<DiscoveryOrchestrator>();
+builder.Services.AddSingleton<IDiscoveryOrchestrator>(sp => sp.GetRequiredService<DiscoveryOrchestrator>());
+builder.Services.AddHostedService<DiscoveryBackgroundService>();
 
 // Register MCP Server with all tools
 builder.Services
@@ -61,6 +66,7 @@ builder.Services
     })
     .WithHttpTransport()
     .WithTools<ListServicesTool>()
+    .WithTools<ListDiscoveredApplicationsTool>()
     .WithTools<GetOpenApiTool>()
     .WithTools<TraceRouteTool>()
     .WithTools<ExplainApiTool>()
@@ -71,8 +77,17 @@ builder.Services
 
 var app = builder.Build();
 
-// Run service discovery and validation at startup
-await RunServiceDiscoveryAsync(app);
+// Populate the catalog before serving traffic so MCP clients that connect early
+// already see the discovered applications. The background service re-scans after.
+try
+{
+    await app.Services.GetRequiredService<IDiscoveryOrchestrator>().ScanAsync();
+}
+catch (Exception ex)
+{
+    app.Services.GetRequiredService<ILogger<Program>>()
+        .LogError(ex, "Initial discovery scan failed. The catalog starts empty; the background service will retry.");
+}
 
 // Serve the React dashboard (built into wwwroot/dashboard) at /dashboard
 app.UseDefaultFiles();
@@ -83,6 +98,7 @@ app.UseBodyCaptureTelemetry();
 app.MapMcp();
 
 app.MapDashboardApi();
+app.MapApplicationsApi();
 
 app.MapFallbackToFile("/dashboard", "dashboard/index.html");
 app.MapFallbackToFile("/dashboard/{**slug}", "dashboard/index.html");
@@ -92,46 +108,3 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "mcp-
 app.MapPrometheusScrapingEndpoint();
 
 app.Run();
-
-static async Task RunServiceDiscoveryAsync(WebApplication app)
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    var discovery = app.Services.GetRequiredService<IServiceDiscovery>();
-    var validator = app.Services.GetRequiredService<IServiceValidator>();
-    var registry = app.Services.GetRequiredService<ServiceRegistry>();
-
-    logger.LogInformation("Starting service discovery...");
-
-    Dictionary<string, string> candidates;
-    try
-    {
-        candidates = await discovery.DiscoverServicesAsync();
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Service discovery failed. No services will be indexed.");
-        return;
-    }
-
-    foreach (var (name, url) in candidates)
-    {
-        var result = await validator.ValidateAsync(name, url);
-        if (result.IsValid)
-        {
-            registry.Register(name, url, result.OpenApiPath);
-            logger.LogInformation(
-                "✓ Registered service '{Name}' at {Url} (spec: {Path})",
-                name, url, result.OpenApiPath);
-        }
-        else
-        {
-            logger.LogWarning(
-                "✗ Skipped service '{Name}' at {Url}: {Failures}",
-                name, url, string.Join("; ", result.Failures));
-        }
-    }
-
-    logger.LogInformation(
-        "Service discovery complete. {Count} service(s) registered: {Names}",
-        registry.GetAll().Count, string.Join(", ", registry.GetAll().Keys));
-}
