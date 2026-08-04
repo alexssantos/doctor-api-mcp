@@ -35,8 +35,9 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  McpServer  (port 4000)                                             │
-│  • 8 ferramentas MCP                                                │
-│  • Dashboard React em /dashboard                                    │
+│  • 9 ferramentas MCP                                                │
+│  • Dashboard React em /dashboard (com switch de indexação)         │
+│  • Descoberta automática de aplicações (deployments/rede/OTel)     │
 │  • Consulta Kubernetes API (in-cluster, read-only)                  │
 │  • Consulta Jaeger API (traces e dependências)                      │
 │  • Consulta Prometheus API (métricas)                               │
@@ -192,17 +193,23 @@ mcp-apis/
 │       └── McpServer/
 │           ├── Program.cs                 # MapMcp() + registro das ferramentas
 │           ├── Services/
-│           │   ├── KubernetesService.cs   # Wrapper do KubernetesClient
+│           │   ├── KubernetesService.cs   # Wrapper do KubernetesClient (cluster-wide)
 │           │   ├── JaegerService.cs       # Wrapper da Jaeger REST API
-│           │   └── OpenApiService.cs      # Fetch e parse de specs OpenAPI
+│           │   ├── OpenApiService.cs      # Fetch e parse de specs OpenAPI
+│           │   ├── ApplicationCatalog.cs  # Inventário vivo de aplicações descobertas
+│           │   ├── DiscoveryOrchestrator.cs      # Scan multi-fonte + correlação
+│           │   ├── DiscoveryBackgroundService.cs # Re-scan periódico/sob demanda
+│           │   └── KubernetesIndexingStateStore.cs # Persistência do toggle (ConfigMap)
 │           ├── Tools/
 │           │   ├── ListServicesTool.cs
+│           │   ├── ListDiscoveredApplicationsTool.cs
 │           │   ├── GetOpenApiTool.cs
 │           │   ├── TraceRouteTool.cs
 │           │   ├── ExplainApiTool.cs
 │           │   ├── GetHealthTool.cs
 │           │   ├── FindDependenciesTool.cs
-│           │   └── FindDataOriginTool.cs
+│           │   ├── FindDataOriginTool.cs
+│           │   └── ToolGuard.cs           # Gate central do switch de indexação
 │           └── Dockerfile
 │
 ├── k8s/                                   # Manifestos Kubernetes (kubectl apply -f)
@@ -252,18 +259,21 @@ mcp-apis/
     ├── tilt.md                            # Guia de desenvolvimento local com Tilt
     └── features/
         ├── 001_implementacao_base.md
-        └── 002_tracing_with_body.md
+        ├── 002_tracing_with_body.md
+        ├── 003_service_discovery_and_validation.md
+        └── 004_automatic_application_discovery.md
 ```
 
 ---
 
 ## MCP Server — Ferramentas
 
-O McpServer expõe 8 ferramentas para agentes de IA. Todas recebem dependências via injeção (DI do .NET — o SDK MCP resolve automaticamente parâmetros que são serviços registrados).
+O McpServer expõe 9 ferramentas para agentes de IA. Todas recebem dependências via injeção (DI do .NET — o SDK MCP resolve automaticamente parâmetros que são serviços registrados).
 
 | Ferramenta | Descrição | Fontes de Dados |
 |---|---|---|
 | `list_services` | Lista todos os services, pods e deployments no namespace com status | Kubernetes API + OpenApiService |
+| `list_discovered_applications` | Inventário completo de aplicações auto-descobertas no cluster (fontes, estado do toggle, motivos de não-indexabilidade) | ApplicationCatalog |
 | `get_openapi` | Retorna a spec OpenAPI completa de um serviço | HTTP → `/openapi/v1.json` |
 | `trace_route` | Busca traces recentes de um serviço/rota com call chain e timings | Jaeger REST API |
 | `explain_api` | Explica o que uma API faz combinando OpenAPI + dados de traces recentes | OpenAPI + Jaeger |
@@ -271,6 +281,8 @@ O McpServer expõe 8 ferramentas para agentes de IA. Todas recebem dependências
 | `find_dependencies` | Mapa de dependências entre serviços usando o grafo do Jaeger | Jaeger `/api/dependencies` |
 | `find_data_origin` | Rastreia a origem dos dados de uma rota: API → chamadas HTTP → queries SQL | OpenAPI + Jaeger + Kubernetes |
 | `query_metrics` | Executa queries PromQL arbitrárias contra Prometheus (instant ou range) | Prometheus `/api/v1/query*` |
+
+> 🔒 **Switch de indexação:** aplicações desabilitadas no dashboard ficam invisíveis para as tools — `get_openapi`/`explain_api`/`find_data_origin`/`get_health`/`trace_route` recusam com erro explicativo, `list_services`/`find_dependencies` omitem os dados (informando em `disabledApplications`), e `query_metrics` recusa queries que mencionem a aplicação (best-effort). Detalhes em [`doc/features/004_automatic_application_discovery.md`](doc/features/004_automatic_application_discovery.md).
 
 ### Registro das ferramentas
 
@@ -290,16 +302,18 @@ Cada tool é uma classe estática com método `Execute` anotado com `[McpServerT
 
 ### Pipeline de inicialização
 
-Ao subir, o McpServer executa automaticamente:
+Ao subir, o McpServer executa automaticamente um scan de descoberta (e re-executa a cada 60s ou sob demanda):
 
 ```
-Discovery (ServiceDiscoveryService)
-  └─► coleta candidatos (config + / ou K8s)
-       └─► Validation (ServiceValidator) — por candidato
-              └─► se válido → ServiceRegistry.Register()
+DiscoveryOrchestrator (startup bloqueante + BackgroundService)
+  └─► coleta fontes (Deployments + Services/Endpoints cluster-wide, Jaeger, Config)
+       └─► correlação de identidade (matching estrutural + normalização de nomes)
+              └─► Validation (ServiceValidator) — por aplicação com base URL
+                     └─► estado do toggle (ConfigMap mcpserver-state)
+                            └─► ApplicationCatalog.ReplaceSnapshot()
 ```
 
-Apenas serviços registrados ficam disponíveis nas tools. Serviços que falham na validação são ignorados com log de aviso — o servidor sobe normalmente para os demais.
+O `ApplicationCatalog` é a fonte de verdade: o dashboard lista **todas** as aplicações descobertas (inclusive as não indexáveis, com o motivo), e as tools MCP enxergam apenas as **habilitadas** no switch de indexação. Serviços que falham na validação OpenAPI seguem visíveis no dashboard e utilizáveis por tools de traces/health — apenas as tools baseadas em spec ficam indisponíveis.
 
 ---
 
@@ -309,11 +323,14 @@ Controlado pela variável `Discovery__Mode` (ou `Discovery:Mode` no `appsettings
 
 | Modo         | Fonte                                                                          |
 |--------------|--------------------------------------------------------------------------------|
+| `Auto` ⭐    | **Descoberta automática cluster-wide**: Deployments + Services/Endpoints (todos os namespaces) + serviços que emitem traces (Jaeger `/api/services`) + seção `Services` |
 | `Config`     | Seção `Services` do appsettings / variáveis de ambiente `Services__<nome>`     |
 | `Kubernetes` | Services no namespace com label `mcp-apis/indexed=true`                        |
-| `Both`       | Mescla ambas as fontes — K8s sobrescreve Config em caso de conflito de nome    |
+| `Both`       | Mescla Config + label — K8s sobrescreve Config em caso de conflito de nome     |
 
-**Padrão:** `Config`.
+**Padrão:** `Auto`. Aplicações auto-descobertas nascem **desabilitadas** para indexação (opt-in via switch no dashboard); as declaradas em `Services__*` ou com label `mcp-apis/indexed=true` nascem habilitadas. A label `mcp-apis/indexed=false` trava a aplicação como desabilitada (o switch fica bloqueado).
+
+> 📄 Detalhes da correlação de identidade (deployment ↔ service ↔ OTel), persistência do toggle e semântica por tool: [`doc/features/004_automatic_application_discovery.md`](doc/features/004_automatic_application_discovery.md)
 
 ---
 
@@ -419,13 +436,20 @@ Se o serviço expõe a spec em outro caminho (ex: `/swagger/v1/swagger.json`), b
 | Variável de ambiente                     | Padrão                 | Descrição                                                       |
 |------------------------------------------|------------------------|-----------------------------------------------------------------|
 | `DataSources__Jaeger__BaseUrl`           | `http://jaeger:16686`  | URL da API REST do Jaeger                                       |
-| `DataSources__Kubernetes__Namespace`     | `mcp-apis`             | Namespace Kubernetes monitorado                                 |
+| `DataSources__Kubernetes__Namespace`     | `mcp-apis`             | Namespace onde o McpServer roda (estado + health padrão)        |
 | `DataSources__OpenApiSpecPaths__0..N`    | `/openapi/v1.json`     | Caminhos candidatos para spec OpenAPI (primeiro 200 vence)      |
-| `Discovery__Mode`                        | `Config`               | Fonte de descoberta: `Config`, `Kubernetes` ou `Both`           |
-| `Discovery__KubernetesLabel`             | `mcp-apis/indexed`     | Label K8s que marca serviços para indexação                     |
-| `Services__<nome>`                       | —                      | URL base de um serviço (usado no modo `Config` ou `Both`)       |
+| `Discovery__Mode`                        | `Auto`                 | Fonte de descoberta: `Auto`, `Config`, `Kubernetes` ou `Both`   |
+| `Discovery__KubernetesLabel`             | `mcp-apis/indexed`     | Label K8s de opt-in (`true`) / hard-off (`false`)               |
+| `Discovery__RescanSeconds`               | `60`                   | Intervalo do re-scan periódico (`0` = só startup + manual)      |
+| `Discovery__RevalidateSeconds`           | `300`                  | Reuso de validações OpenAPI bem-sucedidas                       |
+| `Discovery__ForgetAfterMinutes`          | `60`                   | Tempo até esquecer aplicações não vistas pelos scans            |
+| `Discovery__StateConfigMap`              | `mcpserver-state`      | ConfigMap que persiste o switch de indexação                    |
+| `Discovery__ExcludeNamespaces__0..N`     | `kube-system`, ...     | Namespaces nunca escaneados                                     |
+| `Discovery__ExcludeApps__0..N`           | `mcpserver`, `jaeger`, ... | Infra excluída do catálogo de aplicações                    |
+| `Discovery__ExcludeOtelServices__0..N`   | `jaeger-query`, `McpServer` | Nomes OTel ignorados na descoberta                         |
+| `Services__<nome>`                       | —                      | URL base de um serviço (habilitado por padrão em qualquer modo) |
 
-> 📄 Documentação detalhada: [`doc/features/003_service_discovery_and_validation.md`](doc/features/003_service_discovery_and_validation.md)
+> 📄 Documentação detalhada: [`doc/features/003_service_discovery_and_validation.md`](doc/features/003_service_discovery_and_validation.md) e [`doc/features/004_automatic_application_discovery.md`](doc/features/004_automatic_application_discovery.md)
 
 ---
 
@@ -460,15 +484,18 @@ O McpServer também expõe um **Dashboard web interativo** em `/dashboard` que o
 - **Deployments Prontos:** percentual de deployments com todas as réplicas ready
 - **Saúde do Cluster:** status geral agregado (verde/amarelo/vermelho)
 
-**4. Grid de Serviços**
-- Lista interativa de todos os serviços registrados
-- Por serviço, mostra:
+**4. Painel de Aplicações Descobertas**
+- Lista **todas** as aplicações auto-descobertas no cluster (deployments, rede, OTel, config)
+- **Switch de indexação MCP** por aplicação (optimistic update; persiste no ConfigMap `mcpserver-state`)
+  - Travado (com tooltip) quando o Service tem a label `mcp-apis/indexed: "false"`
+- Por aplicação, mostra:
   - **Nome e Status de Saúde** (badge Saudável/Degradado/Sem Pods)
-  - **URL Base:** endpoint do serviço
-  - **OpenAPI:** badge com link para a spec OpenAPI
-  - **Pod Count:** número de pods running
-  - **Restarts:** contador de restarts (visível apenas se > 0)
-- Click em um serviço o seleciona para visualizar seus traces e métricas
+  - **Badges de fonte:** `Deploy` / `Rede` / `OTel` / `Config` + namespace
+  - **Badge OpenAPI:** verde com o path quando validada; "Não indexável" com tooltip dos motivos quando não
+  - **URL Base**, contagem de pods, restarts (se > 0)
+  - Badge **"Não vista há Xmin"** quando a aplicação sumiu do cluster
+- Botão **Re-scan** força uma nova descoberta imediata
+- Click em uma aplicação a seleciona para visualizar seus traces e métricas
 
 **5. Painel de Traces**
 - Mostra os **12 traces mais recentes** do serviço selecionado via Jaeger
@@ -507,9 +534,12 @@ O McpServer também expõe um **Dashboard web interativo** em `/dashboard` que o
 
 **Backend (em `src/Services/McpServer/`):**
 - **IPrometheusCollector / PrometheusService** — wrapper da Prometheus HTTP API (`/api/v1/query`, `/api/v1/query_range`, `/api/v1/targets`)
-- **DashboardEndpoints.cs** — 7 rotas REST que proxificam os dados:
+- **DashboardEndpoints.cs / ApplicationsEndpoints.cs** — rotas REST que proxificam os dados:
   - `GET /api/dashboard/overview` — cluster summary (pods, deployments, saúde)
   - `GET /api/dashboard/services` — lista de serviços com health por pod
+  - `GET /api/dashboard/applications` — inventário de aplicações descobertas (fontes, validação, toggle)
+  - `PUT /api/dashboard/applications/{name}/indexing` — habilita/desabilita a indexação MCP (`{"enabled": bool}`)
+  - `POST /api/dashboard/discovery/rescan` — força um novo scan de descoberta
   - `GET /api/dashboard/traces?service=&limit=15` — traces do Jaeger agrupados
   - `GET /api/dashboard/dependencies` — grafo do Jaeger
   - `GET /api/dashboard/metrics?query=` — instant query do Prometheus
@@ -661,13 +691,17 @@ nginx Ingress Controller com:
 
 ```yaml
 ServiceAccount: mcp-reader
-Role: mcp-reader-role
+ClusterRole: mcp-reader-cluster-role          # descoberta cluster-wide (feature 004)
   - pods, services, endpoints: get, list
   - deployments: get, list
+Role: mcp-reader-role (namespace mcp-apis)
+  - configmaps: get, list
+  - configmaps [mcpserver-state]: update, patch   # persiste o switch de indexação
+ClusterRoleBinding: mcp-reader-cluster-binding
 RoleBinding: mcp-reader-binding
 ```
 
-O McpServer usa `KubernetesClientConfiguration.InClusterConfig()` — não precisa de kubeconfig montado, o ServiceAccount é injetado automaticamente pelo Kubernetes.
+O McpServer usa `KubernetesClientConfiguration.InClusterConfig()` — não precisa de kubeconfig montado, o ServiceAccount é injetado automaticamente pelo Kubernetes. A única permissão de escrita é `update/patch` no ConfigMap `mcpserver-state` (restrita via `resourceNames`).
 
 ---
 
