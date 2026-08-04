@@ -4,11 +4,12 @@ metadata:
   name: mcp-reader
   namespace: mcp-apis
 ---
+# Cluster-wide read access: the discovery scan correlates Deployments,
+# Services and Endpoints across every namespace (feature 004).
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: mcp-reader-role
-  namespace: mcp-apis
+  name: mcp-reader-cluster-role
 rules:
   - apiGroups: [""]
     resources: ["pods", "services", "endpoints"]
@@ -16,6 +17,36 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-reader-cluster-binding
+subjects:
+  - kind: ServiceAccount
+    name: mcp-reader
+    namespace: mcp-apis
+roleRef:
+  kind: ClusterRole
+  name: mcp-reader-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Namespaced write access, surgical: the server persists the indexing toggle
+# only in the pre-created "mcpserver-state" ConfigMap (resourceNames does not
+# cover the create verb, hence the manifest in state-configmap.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mcp-reader-role
+  namespace: mcp-apis
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["mcpserver-state"]
+    verbs: ["update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

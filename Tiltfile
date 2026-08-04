@@ -109,6 +109,7 @@ k8s_yaml([
     # McpServer
     'infra/k8s/aplicacao/mcpserver/rbac.yaml',
     'infra/k8s/aplicacao/mcpserver/configmap.yaml',
+    'infra/k8s/aplicacao/mcpserver/state-configmap.yaml',
     'infra/k8s/aplicacao/mcpserver/deployment.yaml',
     'infra/k8s/aplicacao/mcpserver/service.yaml',
 ])

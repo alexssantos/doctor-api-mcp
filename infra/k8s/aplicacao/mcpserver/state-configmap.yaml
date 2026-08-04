@@ -1,0 +1,12 @@
+# Persists the per-application MCP indexing toggle (feature 004). Pre-created
+# here because the server's RBAC only allows update/patch on this exact object
+# (resourceNames cannot restrict the create verb).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcpserver-state
+  namespace: mcp-apis
+  labels:
+    app: mcpserver
+data:
+  indexing-overrides: "{}"

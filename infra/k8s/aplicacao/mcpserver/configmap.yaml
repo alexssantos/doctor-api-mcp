@@ -22,11 +22,41 @@ data:
   # Indexed services — use FQDNs to reach services across namespaces:
   #   http://<service>.<namespace>.svc.cluster.local
   # Short names (http://<service>) only resolve within the same namespace.
+  # In Auto mode these entries reinforce auto-discovered apps and make them
+  # enabled by default (auto-discovered apps start disabled, opt-in).
   Services__precoapi: "http://precoapi.mcp-apis.svc.cluster.local"
   Services__produtoapi: "http://produtoapi.mcp-apis.svc.cluster.local"
-  # Discovery:Mode options: Config | Kubernetes | Both
-  Discovery__Mode: "Config"
+  # Discovery:Mode options: Auto | Config | Kubernetes | Both
+  #   Auto scans the whole cluster: Deployments + Services/Endpoints + Jaeger
+  #   trace emitters, correlated into one application catalog.
+  Discovery__Mode: "Auto"
   Discovery__KubernetesLabel: "mcp-apis/indexed"
+  # Periodic re-scan interval in seconds (0 = startup + manual rescan only)
+  Discovery__RescanSeconds: "60"
+  # Successful OpenAPI validations are reused for this long; failures retry every scan
+  Discovery__RevalidateSeconds: "300"
+  # Apps not seen by any scan for this long are dropped from the catalog
+  Discovery__ForgetAfterMinutes: "60"
+  # ConfigMap that persists the per-application indexing toggle
+  Discovery__StateConfigMap: "mcpserver-state"
+  # Namespaces never scanned
+  Discovery__ExcludeNamespaces__0: "kube-system"
+  Discovery__ExcludeNamespaces__1: "kube-public"
+  Discovery__ExcludeNamespaces__2: "kube-node-lease"
+  # Infrastructure kept out of the application catalog (get_health still works
+  # for these names via the tool guard's fail-open behavior)
+  Discovery__ExcludeApps__0: "mcpserver"
+  Discovery__ExcludeApps__1: "jaeger"
+  Discovery__ExcludeApps__2: "prometheus"
+  Discovery__ExcludeApps__3: "grafana"
+  Discovery__ExcludeApps__4: "loki"
+  Discovery__ExcludeApps__5: "promtail"
+  Discovery__ExcludeApps__6: "postgres-preco"
+  Discovery__ExcludeApps__7: "postgres-produto"
+  Discovery__ExcludeApps__8: "kubernetes"
+  # OTel service names ignored by discovery
+  Discovery__ExcludeOtelServices__0: "jaeger-query"
+  Discovery__ExcludeOtelServices__1: "McpServer"
   # Dashboard quick-links -- browser-facing URLs (via k3d nginx ingress on host port 8080)
   Dashboard__Links__Jaeger: "http://jaeger.local:8080"
   Dashboard__Links__Prometheus: "http://prometheus.local:8080"
