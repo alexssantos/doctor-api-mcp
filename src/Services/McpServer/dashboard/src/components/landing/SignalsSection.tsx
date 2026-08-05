@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { animate, onScroll, stagger, utils } from 'animejs'
+import { useEffect, useRef, type RefObject } from 'react'
+import { animate, onScroll, svg, utils } from 'animejs'
 import { Activity, Boxes, Brain, FileJson, Flame, ScrollText, Waypoints } from 'lucide-react'
 import type { ComponentType } from 'react'
 
@@ -60,49 +60,111 @@ const SIGNALS: Signal[] = [
   },
 ]
 
-/** Dots travelling from each signal card down into the correlation box. */
-function DataStream() {
+const SIGNAL_X = [10, 30, 50, 70, 90]
+const TRAVEL_MS = 1200
+const STAGGER_MS = TRAVEL_MS / SIGNAL_X.length
+
+/** Alternates the curve's bow left/right per column so the cascade reads as a little wave. */
+function signalPathD(x: number, i: number) {
+  const bow = i % 2 === 0 ? 3 : -3
+  return `M ${x} 4 C ${x + bow} 18 ${x - bow} 30 ${x} 44`
+}
+
+/**
+ * Each signal card rides its own curved motion path down into the correlation box, one after
+ * another in a staggered cascade (not all five at once). The correlation box's outline flashes
+ * on and fades on every arrival, in the same order.
+ */
+function SignalCascade({ highlightRef }: { highlightRef: RefObject<HTMLDivElement | null> }) {
   const ref = useRef<SVGSVGElement | null>(null)
 
   useEffect(() => {
     const el = ref.current
-    if (!el) return
-    const dots = el.querySelectorAll('circle')
+    const highlight = highlightRef.current
+    if (!el || !highlight) return
+
+    const balls = SIGNAL_X.map((_, i) => el.querySelector<SVGCircleElement>(`#signal-ball-${i}`))
+    const paths = SIGNAL_X.map((_, i) => el.querySelector<SVGPathElement>(`#signal-path-${i}`))
+    if (balls.some((ball) => !ball) || paths.some((path) => !path)) return
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      utils.set(dots, { opacity: 0.4 })
+      // Park each ball at rest on its own path instead of leaving it invisible.
+      balls.forEach((ball, i) => utils.set(ball!, { translateX: SIGNAL_X[i], translateY: 4, opacity: 0.7 }))
+      utils.set(highlight, { opacity: 0.5 })
       return
     }
 
-    const animation = animate(dots, {
-      // Each dot rides its own column down into the funnel.
-      cy: [4, 44],
-      opacity: [{ to: 0.9, duration: 200 }, { to: 0, duration: 500 }],
-      duration: 1400,
-      delay: stagger(220),
+    const animations = paths.map((path, i) =>
+      animate(balls[i]!, {
+        // Rides its own dashed curve; rotate is unused (the ball is round) but harmless.
+        ...svg.createMotionPath(path!),
+        opacity: [
+          { to: 0, duration: 0 },
+          { to: 1, duration: 140 },
+          { to: 1, duration: TRAVEL_MS - 280 },
+          { to: 0, duration: 140 },
+        ],
+        duration: TRAVEL_MS,
+        delay: i * STAGGER_MS,
+        loop: true,
+        ease: 'inOutSine',
+        autoplay: onScroll({ enter: 'bottom top', leave: 'top bottom' }),
+      }),
+    )
+
+    // Flashes the correlation box's outline on each arrival, evenly spaced across one TRAVEL_MS
+    // loop (5 pulses at 0/STAGGER/2*STAGGER/3*STAGGER/4*STAGGER - matches the balls' cascade above).
+    const pulse = animate(highlight, {
+      opacity: [
+        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
+        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
+        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
+        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
+        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
+      ],
+      duration: TRAVEL_MS,
       loop: true,
-      ease: 'inOut(2)',
+      ease: 'linear',
       autoplay: onScroll({ enter: 'bottom top', leave: 'top bottom' }),
     })
 
     return () => {
-      animation.revert()
+      animations.forEach((animation) => animation.revert())
+      pulse.revert()
     }
-  }, [])
+  }, [highlightRef])
 
   return (
     <svg ref={ref} viewBox="0 0 100 48" preserveAspectRatio="none" className="h-12 w-full" aria-hidden="true">
-      {[10, 30, 50, 70, 90].map((x) => (
-        <line key={x} x1={x} y1="0" x2={x} y2="48" stroke="var(--border)" strokeWidth="0.4" />
+      {SIGNAL_X.map((x, i) => (
+        <path
+          key={x}
+          id={`signal-path-${i}`}
+          d={signalPathD(x, i)}
+          fill="none"
+          stroke="var(--border)"
+          strokeWidth="0.6"
+          strokeDasharray="1.6 2.2"
+          strokeLinecap="round"
+        />
       ))}
-      {[10, 30, 50, 70, 90].map((x) => (
-        <circle key={x} cx={x} cy="4" r="1.8" fill="var(--chart-2)" opacity="0" />
+      {SIGNAL_X.map((x, i) => (
+        <circle
+          key={x}
+          id={`signal-ball-${i}`}
+          r="2.2"
+          fill="var(--chart-2)"
+          opacity="0"
+          style={{ filter: 'drop-shadow(0 0 3px var(--chart-2))' }}
+        />
       ))}
     </svg>
   )
 }
 
 export function SignalsSection() {
+  const correlationHighlightRef = useRef<HTMLDivElement | null>(null)
+
   return (
     <section aria-labelledby="sinais-heading">
       <SectionHeading
@@ -138,10 +200,16 @@ export function SignalsSection() {
         })}
       </div>
 
-      <DataStream />
+      <SignalCascade highlightRef={correlationHighlightRef} />
 
       <Reveal>
-        <Card className="border-primary/40 bg-primary/5">
+        <Card className="relative border-primary/40 bg-primary/5">
+          <div
+            ref={correlationHighlightRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-xl opacity-0"
+            style={{ boxShadow: 'inset 0 0 0 2px var(--chart-2), 0 0 24px var(--chart-2)' }}
+          />
           <CardContent className="flex flex-col items-center gap-3 p-5 text-center sm:flex-row sm:text-left">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
               <Brain className="size-5" />

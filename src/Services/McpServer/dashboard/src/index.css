@@ -181,6 +181,29 @@
   }
 }
 
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
@@ -189,6 +212,23 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: var(--border);
     border-radius: 9999px;
+  }
+
+  /* Chat demo: three dots standing in for "the MCP is composing a reply". */
+  .typing-dot {
+    @apply size-1.5 rounded-full bg-muted-foreground;
+    animation: typing-bounce 1.1s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  /* Blinking text-cursor at the end of the still-typing question bubble. */
+  .typing-caret {
+    animation: caret-blink 0.9s step-end infinite;
   }
 
   /* Digits keep a fixed advance width, so values polled every 15s stop jittering. */

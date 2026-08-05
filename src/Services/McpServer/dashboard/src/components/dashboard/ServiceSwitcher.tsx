@@ -2,7 +2,7 @@ import { Boxes } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { DiscoveredApplication } from '@/lib/api'
 
 /**
@@ -37,18 +37,18 @@ export function ServiceSwitcher({
           )}
         </div>
 
-        <Select
-          id="service-switcher"
-          value={selected ?? ''}
-          onChange={(e) => onSelect(e.target.value)}
-          className="font-mono text-xs sm:w-72"
-        >
-          {applications.map((app) => (
-            <option key={app.name} value={app.name}>
-              {app.name}
-              {app.namespace ? ` · ${app.namespace}` : ''}
-            </option>
-          ))}
+        <Select value={selected ?? ''} onValueChange={onSelect}>
+          <SelectTrigger id="service-switcher" className="font-mono text-xs sm:w-72">
+            <SelectValue placeholder="Selecione um serviço" />
+          </SelectTrigger>
+          <SelectContent>
+            {applications.map((app) => (
+              <SelectItem key={app.name} value={app.name} className="font-mono text-xs">
+                {app.name}
+                {app.namespace ? ` · ${app.namespace}` : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </CardContent>
     </Card>

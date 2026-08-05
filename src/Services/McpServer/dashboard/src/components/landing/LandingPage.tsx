@@ -5,6 +5,7 @@ import { Reveal } from '@/components/ui/reveal'
 import { Hero } from '@/components/landing/Hero'
 import { SignalsSection } from '@/components/landing/SignalsSection'
 import { ToolsGrid } from '@/components/landing/ToolsGrid'
+import { ChatDemoSection } from '@/components/landing/ChatDemoSection'
 import { ArchitectureFlow } from '@/components/landing/ArchitectureFlow'
 import { ConnectSection } from '@/components/landing/ConnectSection'
 import { StackSection } from '@/components/landing/StackSection'
@@ -40,6 +41,8 @@ export function LandingPage({
       <SignalsSection />
 
       <ToolsGrid />
+
+      <ChatDemoSection />
 
       <ArchitectureFlow />
 

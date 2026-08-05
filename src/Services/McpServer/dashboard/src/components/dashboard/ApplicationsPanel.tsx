@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApplicationCard } from '@/components/dashboard/ApplicationCard'
 import { useRescanDiscovery, useSetIndexing } from '@/lib/api'
@@ -103,16 +103,16 @@ export function ApplicationsPanel({
               aria-label="Filtrar aplicações"
               className="sm:max-w-xs"
             />
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as StatusFilter)}
-              aria-label="Filtrar por status"
-              className="sm:w-48"
-            >
-              <option value="todas">Todas</option>
-              <option value="habilitadas">Habilitadas no MCP</option>
-              <option value="desabilitadas">Desabilitadas</option>
-              <option value="degradadas">Degradadas</option>
+            <Select value={status} onValueChange={(value) => setStatus(value as StatusFilter)}>
+              <SelectTrigger aria-label="Filtrar por status" className="sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="habilitadas">Habilitadas no MCP</SelectItem>
+                <SelectItem value="desabilitadas">Desabilitadas</SelectItem>
+                <SelectItem value="degradadas">Degradadas</SelectItem>
+              </SelectContent>
             </Select>
           </div>
         )}

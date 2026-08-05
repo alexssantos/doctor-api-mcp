@@ -4,7 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as Rechart
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState, StaleNotice } from '@/components/ui/empty-state'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMetricsRange } from '@/lib/api'
@@ -112,30 +112,30 @@ export function MetricsPanel({ service }: { service?: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Select
-            value={presetKey}
-            onChange={(e) => setPresetKey(e.target.value as keyof typeof PRESETS)}
-            aria-label="Métrica"
-            className="sm:flex-1"
-          >
-            {Object.entries(PRESETS).map(([key, preset]) => (
-              <option key={key} value={key}>
-                {preset.label}
-              </option>
-            ))}
+          <Select value={presetKey} onValueChange={(value) => setPresetKey(value as keyof typeof PRESETS)}>
+            <SelectTrigger aria-label="Métrica" className="sm:flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PRESETS).map(([key, preset]) => (
+                <SelectItem key={key} value={key}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
 
-          <Select
-            value={String(rangeIndex)}
-            onChange={(e) => setRangeIndex(Number(e.target.value))}
-            aria-label="Intervalo de tempo"
-            className="sm:w-44"
-          >
-            {RANGES.map((r, i) => (
-              <option key={r.label} value={i}>
-                {r.label}
-              </option>
-            ))}
+          <Select value={String(rangeIndex)} onValueChange={(value) => setRangeIndex(Number(value))}>
+            <SelectTrigger aria-label="Intervalo de tempo" className="sm:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RANGES.map((r, i) => (
+                <SelectItem key={r.label} value={String(i)}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
 
