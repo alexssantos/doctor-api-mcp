@@ -93,6 +93,14 @@ catch (Exception ex)
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Explicit UseRouting: without it, endpoint matching runs implicitly as the very
+// first middleware, so the greedy "/dashboard/{**slug}" fallback below matches
+// every request under /dashboard (including real asset files) before the static
+// file middleware above ever gets a chance to serve them - StaticFileMiddleware
+// no-ops once an endpoint is already matched. Calling UseRouting() here defers
+// matching until after UseStaticFiles has had first crack at real files.
+app.UseRouting();
+
 app.UseBodyCaptureTelemetry();
 
 app.MapMcp();
