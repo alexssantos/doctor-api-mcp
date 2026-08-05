@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite'
 // build (vite.config.ts), which is embedded in the .NET backend instead.
 export default defineConfig({
   root: path.resolve(import.meta.dirname, 'pages'),
-  base: '/mcp-apis/',
+  base: '/doctor-api-mcp/',
   publicDir: path.resolve(import.meta.dirname, 'public'),
   plugins: [react(), tailwindcss()],
   resolve: {

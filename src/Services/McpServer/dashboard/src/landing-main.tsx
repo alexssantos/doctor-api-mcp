@@ -33,7 +33,7 @@ function LandingDemo() {
           </div>
 
           <a
-            href="https://github.com/alexssantos/mcp-apis"
+            href="https://github.com/alexssantos/doctor-api-mcp"
             target="_blank"
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
