@@ -1,10 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ExternalLink, Radar } from 'lucide-react'
+import { Activity, ExternalLink, Moon, Radar, Sun } from 'lucide-react'
 
 import '@/index.css'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { LandingPage } from '@/components/landing/LandingPage'
+import { useDarkMode } from '@/hooks/use-dark-mode'
 import { mockApplications, mockCluster, mockEnabledCount, mockLinks } from '@/lib/mock-data'
 
 // Build estático publicado no GitHub Pages: mesma "Projeto" tab do dashboard,
@@ -16,6 +18,8 @@ function scrollToTop() {
 }
 
 function LandingDemo() {
+  const { isDark, toggle } = useDarkMode()
+
   return (
     <div className="min-h-dvh bg-background">
       <header className="border-b border-border bg-background/85 backdrop-blur">
@@ -32,15 +36,26 @@ function LandingDemo() {
             </div>
           </div>
 
-          <a
-            href="https://github.com/alexssantos/doctor-api-mcp"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ExternalLink className="size-3.5" />
-            Ver no GitHub
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/alexssantos/doctor-api-mcp"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ExternalLink className="size-3.5" />
+              Ver no GitHub
+            </a>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggle}
+              aria-label={isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            >
+              {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </Button>
+          </div>
         </div>
       </header>
 

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
 import { Activity, LayoutGrid, Moon, RefreshCw, Sparkles, Sun, Waypoints } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useDarkMode } from '@/hooks/use-dark-mode'
 import { TABS, type TabId } from '@/lib/tabs'
 import { cn } from '@/lib/utils'
 
@@ -11,22 +11,6 @@ const TAB_META: Record<TabId, { label: string; icon: typeof Activity }> = {
   operacao: { label: 'Operação', icon: LayoutGrid },
   observabilidade: { label: 'Observabilidade', icon: Waypoints },
   projeto: { label: 'Projeto', icon: Sparkles },
-}
-
-function useDarkMode() {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    const stored = localStorage.getItem('mcp-dashboard-theme')
-    if (stored) return stored === 'dark'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark)
-    localStorage.setItem('mcp-dashboard-theme', isDark ? 'dark' : 'light')
-  }, [isDark])
-
-  return { isDark, toggle: () => setIsDark((v) => !v) }
 }
 
 function formatTime(ts?: number) {
