@@ -1,7 +1,7 @@
 {
   "servers": {
     "mcp-apis": {
-      "url": "http://mcpserver.local:8080/",
+      "url": "http://localhost:4000/",
       "type": "streamable-http"
     }
   }
