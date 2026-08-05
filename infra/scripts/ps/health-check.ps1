@@ -157,8 +157,10 @@ Pass "$($script:PfProcs.Count) port-forward(s) iniciados"
 
 # ─── 7. Endpoints HTTP ────────────────────────────────────────────────────────
 Section "7. Endpoints HTTP"
+Test-Http "PrecoAPI   /openapi/v1.json"    "http://localhost:5001/openapi/v1.json"
 Test-Http "PrecoAPI   /scalar/v1"          "http://localhost:5001/scalar/v1"
 Test-Http "PrecoAPI   /metrics"            "http://localhost:5001/metrics"
+Test-Http "ProdutoAPI /openapi/v1.json"    "http://localhost:5002/openapi/v1.json"
 Test-Http "ProdutoAPI /scalar/v1"          "http://localhost:5002/scalar/v1"
 Test-Http "ProdutoAPI /metrics"            "http://localhost:5002/metrics"
 Test-Http "McpServer  /health"             "http://localhost:4000/health"

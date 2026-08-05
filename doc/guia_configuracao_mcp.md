@@ -104,8 +104,9 @@ bash scripts/validate-routes.sh
 Testes:
 - Criação de preços e produtos (CRUD)
 - Consulta de produto com preço (integração entre APIs)
-- Scalar UI acessível
-- Total: 9 testes
+- OpenAPI spec acessível (`/openapi/v1.json`)
+- Scalar UI acessível (`/scalar/v1`)
+- Total: 11 testes
 
 ### Fase 3: Observabilidade
 

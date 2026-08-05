@@ -31,9 +31,11 @@ check() {
   fi
 }
 
-echo "=== 1. Scalar UI (docs) ==="
-check "PrecoAPI   GET /scalar/v1"   200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRECO_URL/scalar/v1")"
-check "ProdutoAPI GET /scalar/v1"   200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRODUTO_URL/scalar/v1")"
+echo "=== 1. OpenAPI spec e Scalar UI ==="
+check "PrecoAPI   GET /openapi/v1.json"   200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRECO_URL/openapi/v1.json")"
+check "PrecoAPI   GET /scalar/v1"         200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRECO_URL/scalar/v1")"
+check "ProdutoAPI GET /openapi/v1.json"   200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRODUTO_URL/openapi/v1.json")"
+check "ProdutoAPI GET /scalar/v1"         200 "$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$PRODUTO_URL/scalar/v1")"
 
 echo ""
 echo "=== 2. POST /api/products ==="

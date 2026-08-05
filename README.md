@@ -676,7 +676,7 @@ PrecoAPI e ProdutoAPI com:
 - `replicas: 2`
 - `imagePullPolicy: Never` — imagens buildadas localmente e importadas com `k3d image import`
 - Resources com `requests` e `limits` definidos
-- `readinessProbe` e `livenessProbe` via HTTP no `/scalar/v1`
+- `readinessProbe` e `livenessProbe` via HTTP no `/health`
 - `ConfigMap` para variáveis de ambiente (endpoint OTLP, URL da PrecoAPI, etc.)
 - `Secret` para connection string do banco
 
@@ -776,7 +776,7 @@ Para este projeto de estudo, `EnsureCreatedAsync` na inicialização é suficien
 
 ### Por que Scalar em vez de Swagger UI?
 
-Scalar oferece uma UI mais moderna e é a recomendação do ecossistema .NET 10. Também é usado como probe de readiness/liveness nos pods — se a UI responde, a API está pronta.
+Scalar oferece uma UI mais moderna e é a recomendação do ecossistema .NET 10. Em PrecoAPI e ProdutoAPI, `app.MapOpenApi()` e `app.MapScalarApiReference()` são chamados incondicionalmente (sem checar `IsDevelopment()`) — as duas são APIs de exemplo criadas para testar o MCP, não serviços reais expostos a usuários finais, então `/scalar/v1` e `/openapi/v1.json` ficam acessíveis em qualquer ambiente, incluindo `Production`. As sondas de readiness/liveness usam o endpoint dedicado `/health`, independente do Scalar.
 
 ### Por que `imagePullPolicy: Never`?
 

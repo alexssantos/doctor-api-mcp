@@ -66,10 +66,12 @@ Start-Sleep -Seconds 6
 
 try {
 
-    # ─── 1. Scalar UI ─────────────────────────────────────────────────────────
-    Section "1. Scalar UI"
-    Test-Http "PrecoAPI   /scalar/v1"   "$PRECO_URL/scalar/v1"
-    Test-Http "ProdutoAPI /scalar/v1"   "$PRODUTO_URL/scalar/v1"
+    # ─── 1. OpenAPI spec ──────────────────────────────────────────────────────
+    Section "1. OpenAPI spec e Scalar UI"
+    Test-Http "PrecoAPI   /openapi/v1.json"   "$PRECO_URL/openapi/v1.json"
+    Test-Http "PrecoAPI   /scalar/v1"         "$PRECO_URL/scalar/v1"
+    Test-Http "ProdutoAPI /openapi/v1.json"   "$PRODUTO_URL/openapi/v1.json"
+    Test-Http "ProdutoAPI /scalar/v1"         "$PRODUTO_URL/scalar/v1"
 
     # ─── 2. CRUD de Produto e Preco ───────────────────────────────────────────
     Section "2. CRUD Produto / Preco"

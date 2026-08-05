@@ -53,19 +53,18 @@ using (var scope = app.Services.CreateScope())
 
 app.UseBodyCaptureTelemetry();
 
-// Health endpoint for k8s probes (kept separate from the interactive API
-// docs UI, which is restricted to Development below).
+// Health endpoint for k8s liveness/readiness probes.
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "precoapi" }));
 
-if (app.Environment.IsDevelopment())
+// PrecoAPI is an example service for testing the MCP server, so the OpenAPI spec
+// and Scalar UI stay enabled in every environment, including Production (the spec
+// is also required by the MCP Server's ServiceValidator - see README).
+app.MapOpenApi();
+app.MapScalarApiReference(opts =>
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference(opts =>
-    {
-        opts.Title = "PrecoAPI";
-        opts.Theme = ScalarTheme.DeepSpace;
-    });
-}
+    opts.Title = "PrecoAPI";
+    opts.Theme = ScalarTheme.DeepSpace;
+});
 
 app.UseRateLimiter();
 app.UseAuthorization();
