@@ -59,25 +59,29 @@ export function ApplicationCard({
   const restarts = app.health?.pods.reduce((sum, p) => sum + p.restarts, 0) ?? 0
 
   return (
+    // The card itself is a plain container. Making it a `role="button"` while it
+    // contains a Switch nests interactive controls, which hides the switch from
+    // assistive tech — so selection lives on the real <button> below instead.
     <Card
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
       className={cn(
-        'cursor-pointer transition-all hover:border-primary/50 hover:shadow-md',
-        selected && 'border-primary ring-2 ring-ring',
-        !app.enabled && 'opacity-60',
+        'transition-colors focus-within:border-primary/60',
+        selected ? 'border-primary ring-1 ring-ring' : 'hover:border-primary/40',
+        !app.enabled && 'opacity-70',
       )}
     >
       <CardHeader>
         <CardTitle className="justify-between gap-2">
-          <span className="min-w-0 truncate font-mono text-sm">{app.name}</span>
-          <span
-            className="flex shrink-0 items-center gap-2"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-pressed={selected}
+            title={`Ver traces e métricas de ${app.name}`}
+            className="min-w-0 cursor-pointer truncate rounded font-mono text-sm hover:text-primary"
           >
+            {app.name}
+          </button>
+
+          <span className="flex shrink-0 items-center gap-2">
             <Badge variant={status.variant}>
               <StatusIcon className="size-3" />
               {status.label}
@@ -86,7 +90,7 @@ export function ApplicationCard({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
-                    <Switch checked={false} disabled aria-label="Indexação travada" />
+                    <Switch checked={false} disabled aria-label={`Indexação de ${app.name} travada`} />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -148,16 +152,18 @@ export function ApplicationCard({
             </Tooltip>
           ) : null}
           {app.health && app.health.podCount > 0 && (
-            <Badge variant="outline">{app.health.podCount} pod(s)</Badge>
+            <Badge variant="outline" className="tabular">
+              {app.health.podCount} pod(s)
+            </Badge>
           )}
           {restarts > 0 && (
-            <Badge variant="warning">
+            <Badge variant="warning" className="tabular">
               <RotateCcw className="size-3" />
               {restarts} restart{restarts > 1 ? 's' : ''}
             </Badge>
           )}
           {app.missing && (
-            <Badge variant="destructive">
+            <Badge variant="destructive" className="tabular">
               <EyeOff className="size-3" />
               Não vista há {minutesSince(app.lastSeen)}min
             </Badge>

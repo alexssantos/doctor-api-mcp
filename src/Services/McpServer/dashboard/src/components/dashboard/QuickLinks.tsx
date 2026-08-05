@@ -44,7 +44,13 @@ export function QuickLinks({ links }: { links?: DashboardLinks }) {
         const Icon = meta.icon
 
         return (
-          <a key={key} href={url} target="_blank" rel="noreferrer noopener" className="group">
+          <a
+            key={key}
+            href={url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
             <Card className="h-full transition-colors group-hover:border-primary/50 group-hover:bg-accent/40">
               <CardContent className="flex items-center gap-3 p-4">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -53,12 +59,13 @@ export function QuickLinks({ links }: { links?: DashboardLinks }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <p className="truncate text-sm font-medium">{meta.label}</p>
-                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
                   </div>
                   <p className="truncate text-xs text-muted-foreground">{meta.description}</p>
                 </div>
               </CardContent>
             </Card>
+            <span className="sr-only">(abre em nova aba)</span>
           </a>
         )
       })}

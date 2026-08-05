@@ -5,6 +5,13 @@
 :root {
   --radius: 0.625rem;
 
+  /* Layer scale — keep every fixed/floating element on one of these steps. */
+  --z-base: 0;
+  --z-sticky: 30;
+  --z-overlay: 40;
+  --z-popover: 50;
+  --z-skip: 100;
+
   --background: oklch(0.99 0 0);
   --foreground: oklch(0.18 0.01 260);
 
@@ -31,6 +38,12 @@
 
   --success: oklch(0.64 0.15 155);
   --warning: oklch(0.75 0.16 80);
+
+  /* Text/icon variants of the status colours. --success/--warning are tuned for
+     fills (dots, rings, 15% tints); used as text on a light surface they only
+     reach ~2:1, so these darker pairs carry anything readable. */
+  --success-fg: oklch(0.48 0.13 155);
+  --warning-fg: oklch(0.45 0.11 70);
 
   --border: oklch(0.91 0.01 260);
   --input: oklch(0.91 0.01 260);
@@ -70,6 +83,8 @@
 
   --success: oklch(0.7 0.16 155);
   --warning: oklch(0.8 0.16 80);
+  --success-fg: oklch(0.8 0.15 155);
+  --warning-fg: oklch(0.85 0.14 85);
 
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
@@ -83,6 +98,9 @@
 }
 
 @theme inline {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -101,6 +119,8 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-success-fg: var(--success-fg);
+  --color-warning-fg: var(--warning-fg);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -120,8 +140,44 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* The sticky header is ~101px tall (brand row + tab nav). Without this, anchor
+     jumps and scrollIntoView land content underneath it. */
+  html {
+    scroll-padding-top: 7rem;
+  }
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  /* The `*` rule above only sets an outline colour. Interactive elements need a
+     ring thick enough to actually spot while tabbing. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  [role='button']:focus-visible,
+  [data-slot='switch']:focus-visible,
+  [data-slot='tabs-trigger']:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Honour the OS setting: no reveals, no spinners, no chart tweens. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -133,5 +189,20 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: var(--border);
     border-radius: 9999px;
+  }
+
+  /* Digits keep a fixed advance width, so values polled every 15s stop jittering. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Keyboard-only skip link: off-screen until focused. */
+  .skip-link {
+    @apply absolute left-4 top-4 z-[var(--z-skip)] -translate-y-24 rounded-lg bg-primary px-4 py-2
+           text-sm font-medium text-primary-foreground opacity-0 transition-transform;
+  }
+  .skip-link:focus {
+    @apply translate-y-0 opacity-100;
   }
 }

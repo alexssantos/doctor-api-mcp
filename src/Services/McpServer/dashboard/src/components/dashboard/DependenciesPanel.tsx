@@ -2,21 +2,31 @@ import { AlertCircle, ArrowRight, Network } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState, StaleNotice } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDependencies } from '@/lib/api'
 
 export function DependenciesPanel() {
-  const { data: dependencies, isLoading, isError } = useDependencies()
+  const { data: dependencies, isLoading, isError, refetch } = useDependencies()
+
+  // Prefer showing the last known graph over an error that contradicts it.
+  const hasData = Boolean(dependencies && dependencies.length > 0)
+  const showError = isError && !hasData
 
   return (
-    <Card>
+    <Card aria-busy={isLoading}>
       <CardHeader>
         <CardTitle>
           <Network className="size-4 text-chart-2" />
           Dependências entre serviços
+          {dependencies && dependencies.length > 0 && (
+            <span className="text-xs font-normal text-muted-foreground tabular">
+              {dependencies.length} aresta{dependencies.length > 1 ? 's' : ''}
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-2">
         {isLoading && (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -25,32 +35,42 @@ export function DependenciesPanel() {
           </div>
         )}
 
-        {isError && (
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-            <AlertCircle className="size-4 shrink-0" />
-            Sem dados de dependências disponíveis no Jaeger ainda.
-          </div>
+        {showError && (
+          <EmptyState
+            variant="error"
+            icon={AlertCircle}
+            title="Sem dados de dependências"
+            description="O Jaeger ainda não expôs o grafo de dependências. Ele é recalculado periodicamente."
+            action={{ label: 'Tentar novamente', onClick: () => refetch() }}
+          />
         )}
 
-        {!isLoading && !isError && (!dependencies || dependencies.length === 0) && (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Nenhuma dependência detectada. Gere tráfego entre os serviços e aguarde o Jaeger processar.
-          </p>
+        {isError && hasData && <StaleNotice onRetry={() => refetch()} />}
+
+        {!isLoading && !isError && !hasData && (
+          <EmptyState
+            icon={Network}
+            title="Nenhuma dependência detectada"
+            description="Gere tráfego entre os serviços e aguarde o Jaeger processar os spans para montar o grafo."
+            action={{ label: 'Atualizar', onClick: () => refetch() }}
+          />
         )}
 
-        {dependencies && dependencies.length > 0 && (
+        {hasData && (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {dependencies.map((edge, i) => (
+            {dependencies!.map((edge, i) => (
               <li
                 key={`${edge.parent}-${edge.child}-${i}`}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm transition-colors hover:border-border hover:bg-accent/30"
               >
                 <div className="flex min-w-0 items-center gap-1.5 font-mono text-xs">
                   <span className="truncate">{edge.parent ?? '?'}</span>
                   <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{edge.child ?? '?'}</span>
                 </div>
-                <Badge variant="outline">{edge.callCount ?? 0} chamadas</Badge>
+                <Badge variant="outline" className="tabular">
+                  {edge.callCount ?? 0} chamadas
+                </Badge>
               </li>
             ))}
           </ul>
