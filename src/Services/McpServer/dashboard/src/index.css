@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Explicit source so the landing-only build (vite.pages.config.ts, root:
+   "pages") still scans this directory for classes — with a custom root,
+   Tailwind's automatic content detection no longer walks up into src/. */
+@source "../";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
