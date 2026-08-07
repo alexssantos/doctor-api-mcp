@@ -1,0 +1,18 @@
+meta {
+  name: Consultar produto criado
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/products/{{productId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("retorna o produto criado", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().id).to.equal(bru.getVar("productId"));
+  });
+}

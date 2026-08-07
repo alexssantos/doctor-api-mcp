@@ -1,0 +1,25 @@
+meta {
+  name: Atualizar produto criado
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/api/products/{{productId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{productName}} atualizado",
+    "description": "{{productDescription}} - atualizado"
+  }
+}
+
+tests {
+  test("atualiza o produto", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().name).to.equal(`${bru.getVar("productName")} atualizado`);
+  });
+}

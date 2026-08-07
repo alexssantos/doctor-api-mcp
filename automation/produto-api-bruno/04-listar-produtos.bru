@@ -1,0 +1,18 @@
+meta {
+  name: Listar produtos
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/products
+  body: none
+  auth: none
+}
+
+tests {
+  test("retorna a lista de produtos", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.be.an("array");
+  });
+}

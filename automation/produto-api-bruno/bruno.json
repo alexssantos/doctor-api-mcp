@@ -1,0 +1,9 @@
+{
+    "version": "1",
+    "name": "ProdutoAPI - Simulacao de Atividade",
+    "type": "collection",
+    "ignore": [
+        "node_modules",
+        ".git"
+    ]
+}

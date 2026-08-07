@@ -1,0 +1,36 @@
+meta {
+  name: Criar produto
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/products
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{productName}}",
+    "description": "{{productDescription}}"
+  }
+}
+
+script:pre-request {
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  bru.setVar("productName", `Produto simulado ${suffix}`);
+  bru.setVar("productDescription", `Gerado pela colecao Bruno em ${new Date().toISOString()}`);
+}
+
+script:post-response {
+  const response = res.getBody();
+  bru.setVar("productId", response.id);
+}
+
+tests {
+  test("retorna 201 e o identificador do produto", function () {
+    expect(res.getStatus()).to.equal(201);
+    expect(res.getBody().id).to.be.a("string");
+  });
+}

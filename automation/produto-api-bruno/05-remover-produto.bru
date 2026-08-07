@@ -1,0 +1,17 @@
+meta {
+  name: Remover produto criado
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/products/{{productId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("remove o produto", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}
