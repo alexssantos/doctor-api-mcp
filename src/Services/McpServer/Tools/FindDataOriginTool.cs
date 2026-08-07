@@ -63,10 +63,14 @@ public class FindDataOriginTool
             .Select(g => new
             {
                 traceId = g.Key,
-                chain = g.OrderBy(s => s.Duration).Select(s => new
+                chain = OrderCausally(g).Select(s => new
                 {
                     s.ServiceName,
                     s.OperationName,
+                    s.SpanId,
+                    s.ParentSpanId,
+                    startedAt = s.StartedAt,
+                    spanStatus = s.Status,
                     durationMs = s.Duration / 1000.0,
                     dbStatement = s.Tags.GetValueOrDefault("db.statement", ""),
                     dbSystem = s.Tags.GetValueOrDefault("db.system", ""),
@@ -91,5 +95,36 @@ public class FindDataOriginTool
         };
 
         return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static IReadOnlyList<TraceSpan> OrderCausally(IEnumerable<TraceSpan> spans)
+    {
+        var items = spans.ToArray();
+        var byParent = items
+            .Where(s => !string.IsNullOrWhiteSpace(s.ParentSpanId))
+            .GroupBy(s => s.ParentSpanId!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.OrderBy(s => s.StartedAt).ToArray(), StringComparer.Ordinal);
+        var roots = items
+            .Where(s => string.IsNullOrWhiteSpace(s.ParentSpanId) ||
+                        items.All(candidate => candidate.SpanId != s.ParentSpanId))
+            .OrderBy(s => s.StartedAt)
+            .ToArray();
+        var ordered = new List<TraceSpan>(items.Length);
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var root in roots)
+            Visit(root);
+        foreach (var remaining in items.OrderBy(s => s.StartedAt))
+            Visit(remaining);
+        return ordered;
+
+        void Visit(TraceSpan span)
+        {
+            if (!visited.Add(span.SpanId))
+                return;
+            ordered.Add(span);
+            if (byParent.TryGetValue(span.SpanId, out var children))
+                foreach (var child in children)
+                    Visit(child);
+        }
     }
 }
