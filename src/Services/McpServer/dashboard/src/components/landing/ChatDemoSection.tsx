@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
-import { ArrowRight, Bot, User } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowRight, Bot, CheckCircle2, CircleHelp, ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,224 +8,131 @@ import { SectionHeading } from '@/components/landing/SectionHeading'
 import { MCP_TOOLS } from '@/lib/mcp-tools'
 import { cn } from '@/lib/utils'
 
-interface ChatExample {
-  tool: string
-  question: string
-  answer: ReactNode
-}
-
-/** Scripted, but grounded in the real tool names/queries — not a live agent call. */
-const EXAMPLES: ChatExample[] = [
+const SCENARIOS = [
   {
-    tool: 'service_get_health',
+    id: 'health',
+    label: 'Saúde agora',
     question: 'A ProdutoAPI está saudável?',
-    answer: (
-      <div className="space-y-2.5">
-        <p className="leading-relaxed">
-          <strong className="font-semibold text-warning-fg">Degradada, score 72.</strong> Os pods estão
-          prontos, mas o P95 subiu 38% na janela de 30 minutos.
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge variant="success">2/2 prontos</Badge>
-          <Badge variant="warning">P95 +38%</Badge>
-          <Badge variant="outline">cobertura 92%</Badge>
-        </div>
-      </div>
-    ),
+    tool: 'service_get_health',
+    answer: 'Degradada, score 72. Os pods estão prontos, mas o P95 subiu 38% nos últimos 30 minutos.',
+    evidence: ['Kubernetes 2/2 prontos', 'Prometheus P95 +38%', 'cobertura 92%'],
+    limitation: 'Jaeger está stale; traces não influenciaram esta conclusão.',
   },
   {
-    tool: 'service_get_incident_timeline',
+    id: 'timeline',
+    label: 'Depois do deploy',
     question: 'O que aconteceu depois do deploy da PrecoAPI?',
-    answer: (
-      <div className="space-y-2.5">
-        <p className="leading-relaxed">A timeline correlacionou três eventos sem duplicatas:</p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="font-mono text-[10px]">
-            14:08 deploy rev.17
-          </Badge>
-          <ArrowRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <Badge variant="warning" className="font-mono text-[10px]">
-            14:12 P95 anômalo
-          </Badge>
-          <ArrowRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <Badge variant="destructive" className="font-mono text-[10px]">
-            14:14 erros 5xx
-          </Badge>
-        </div>
-      </div>
-    ),
+    tool: 'service_get_incident_timeline',
+    answer: 'A revisão 17 foi seguida por latência anômala em 4 minutos e pelo aumento de erros 5xx em 6 minutos.',
+    evidence: ['14:08 deploy rev.17', '14:12 P95 anômalo', '14:14 erros 5xx'],
+    limitation: 'A ordem temporal é confirmada; causalidade ainda é uma hipótese.',
   },
   {
-    tool: 'service_find_root_cause',
+    id: 'root-cause',
+    label: 'Causa provável',
     question: 'Qual é a causa raiz mais provável?',
-    answer: (
-      <div className="space-y-2.5">
-        <p className="leading-relaxed">
-          <strong className="font-semibold text-warning-fg">Hipótese principal, confiança 86%:</strong>{' '}
-          regressão introduzida pela revisão 17.
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge variant="outline">3 evidências favoráveis</Badge>
-          <Badge variant="outline">0 contrárias</Badge>
-          <Badge variant="secondary">recomendação somente leitura</Badge>
-        </div>
-      </div>
-    ),
+    tool: 'service_find_root_cause',
+    answer: 'Hipótese principal, confiança 86%: regressão introduzida pela revisão 17 da PrecoAPI.',
+    evidence: ['3 evidências favoráveis', '0 evidências contrárias', 'blast radius: ProdutoAPI'],
+    limitation: 'A recomendação é somente leitura: comparar a revisão 17 com a anterior.',
   },
-]
+] as const
 
-const TYPE_MS_PER_CHAR = 26
-const THINKING_MS = 850
-const HOLD_MS = 3800
-
-type Phase = 'typing' | 'thinking' | 'answered'
-
-/**
- * A scripted chat mockup: the question types itself out, the MCP "thinks" for a
- * beat, then a formatted answer lands — cycling through a few real use cases.
- * Fully static (first example, fully typed) under prefers-reduced-motion.
- */
 export function ChatDemoSection() {
-  const [reducedMotion] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  )
-  const [index, setIndex] = useState(0)
-  const [phase, setPhase] = useState<Phase>(() => (reducedMotion ? 'answered' : 'typing'))
-  const [typedLength, setTypedLength] = useState(() => (reducedMotion ? EXAMPLES[0].question.length : 0))
-
-  const example = EXAMPLES[index]
-  const tool = MCP_TOOLS.find((t) => t.name === example.tool)
+  const [selectedId, setSelectedId] = useState<(typeof SCENARIOS)[number]['id']>('health')
+  const selected = SCENARIOS.find((scenario) => scenario.id === selectedId) ?? SCENARIOS[0]
+  const tool = MCP_TOOLS.find((item) => item.name === selected.tool)
   const ToolIcon = tool?.icon
-
-  const selectExample = useCallback((nextIndex: number) => {
-    setIndex(nextIndex)
-    if (reducedMotion) {
-      setPhase('answered')
-      setTypedLength(EXAMPLES[nextIndex].question.length)
-      return
-    }
-    setTypedLength(0)
-    setPhase('typing')
-  }, [reducedMotion])
-
-  // Types the question one character at a time, then hands off to "thinking".
-  useEffect(() => {
-    if (reducedMotion || phase !== 'typing') return
-    if (typedLength >= example.question.length) {
-      const t = setTimeout(() => setPhase('thinking'), 250)
-      return () => clearTimeout(t)
-    }
-    const t = setTimeout(() => setTypedLength((n) => n + 1), TYPE_MS_PER_CHAR)
-    return () => clearTimeout(t)
-  }, [phase, typedLength, reducedMotion, example.question])
-
-  // Brief "typing…" bubble before the formatted answer lands.
-  useEffect(() => {
-    if (reducedMotion || phase !== 'thinking') return
-    const t = setTimeout(() => setPhase('answered'), THINKING_MS)
-    return () => clearTimeout(t)
-  }, [phase, reducedMotion])
-
-  // Holds the answer on screen, then cycles to the next use case.
-  useEffect(() => {
-    if (reducedMotion || phase !== 'answered') return
-    const t = setTimeout(() => selectExample((index + 1) % EXAMPLES.length), HOLD_MS)
-    return () => clearTimeout(t)
-  }, [index, phase, reducedMotion, selectExample])
 
   return (
     <section aria-labelledby="chat-heading">
       <SectionHeading
         id="chat-heading"
         eyebrow="Na prática"
-        title="Uma pergunta em português, uma resposta correlacionada"
-        description="O agente decide qual ferramenta chamar, o MCP busca nas fontes certas e devolve texto pronto — não um JSON cru para o modelo interpretar sozinho."
+        title="Escolha uma pergunta e veja como a resposta é construída"
+        description="Cada cenário deixa explícitos a tool usada, as evidências que sustentam a conclusão e aquilo que ainda não pode ser afirmado."
       />
 
-      <Reveal delay={80} className="mt-6">
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <span className="flex size-2 shrink-0 rounded-full bg-success" aria-hidden="true" />
-              <code className="font-mono text-xs text-muted-foreground">Cliente MCP · streamable-http</code>
-            </div>
-            {ToolIcon && (
-              <Badge variant="outline" className="gap-1 font-mono text-[10px]">
-                <ToolIcon className="size-3" />
-                {example.tool}
-              </Badge>
-            )}
-          </div>
-
-          <CardContent className="flex min-h-60 flex-col justify-end gap-3 p-4 sm:p-6">
-            <div className="flex items-start justify-end gap-2.5">
-              <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">
-                {example.question.slice(0, typedLength)}
-                {phase === 'typing' && (
-                  <span className="typing-caret" aria-hidden="true">
-                    ▍
-                  </span>
-                )}
-              </div>
-              <div
-                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted"
-                aria-hidden="true"
-              >
-                <User className="size-3.5" />
-              </div>
-            </div>
-
-            {phase !== 'typing' && (
-              <div className="flex items-start gap-2.5">
-                <div
-                  className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
-                  aria-hidden="true"
-                >
-                  <Bot className="size-3.5" />
-                </div>
-                {phase === 'thinking' ? (
-                  <div
-                    role="status"
-                    aria-label="MCP está respondendo"
-                    className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-border bg-card px-3.5 py-3"
-                  >
-                    <span className="typing-dot" />
-                    <span className="typing-dot" />
-                    <span className="typing-dot" />
-                  </div>
-                ) : (
-                  <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-border bg-card px-3.5 py-3 text-sm">
-                    {example.answer}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-
-          <div className="flex items-center justify-center border-t border-border py-1">
-            {EXAMPLES.map((ex, i) => (
-              <button
-                key={ex.tool}
-                type="button"
-                onClick={() => selectExample(i)}
-                aria-label={`Ver exemplo: ${ex.question}`}
-                aria-current={i === index}
-                className={cn(
-                  'group inline-flex size-11 cursor-pointer items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                )}
-              >
-                <span
-                  aria-hidden="true"
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(15rem,0.65fr)_minmax(0,1.35fr)]">
+        <Reveal>
+          <div className="grid gap-2" role="group" aria-label="Cenários de investigação">
+            {SCENARIOS.map((scenario, index) => {
+              const active = scenario.id === selected.id
+              return (
+                <button
+                  key={scenario.id}
+                  type="button"
+                  aria-pressed={active}
+                  aria-controls="scenario-detail"
+                  onClick={() => setSelectedId(scenario.id)}
                   className={cn(
-                    'h-1.5 rounded-full transition-all',
-                    i === index ? 'w-5 bg-primary' : 'w-1.5 bg-border group-hover:bg-muted-foreground/40',
+                    'flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                    active ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent/60',
                   )}
-                />
-              </button>
-            ))}
+                >
+                  <span className={cn(
+                    'flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold tabular',
+                    active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                  )}>
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{scenario.label}</span>
+                    <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{scenario.question}</span>
+                  </span>
+                  <ArrowRight className={cn('ml-auto size-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+                </button>
+              )
+            })}
           </div>
-        </Card>
-      </Reveal>
+        </Reveal>
+
+        <Reveal delay={60}>
+          <Card id="scenario-detail" className="h-full overflow-hidden" aria-live="polite">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/35 px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Bot className="size-3.5" aria-hidden="true" />
+                </span>
+                investigação orientada por evidências
+              </div>
+              <Badge variant="outline" className="gap-1 font-mono text-[10px]">
+                {ToolIcon && <ToolIcon className="size-3" aria-hidden="true" />}
+                {selected.tool}
+              </Badge>
+            </div>
+
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <div>
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <CircleHelp className="size-3.5" aria-hidden="true" />
+                  Pergunta do agente
+                </p>
+                <p className="mt-2 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground">{selected.question}</p>
+              </div>
+
+              <div>
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  Conclusão
+                </p>
+                <p className="mt-2 text-base font-semibold leading-relaxed">{selected.answer}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {selected.evidence.map((evidence) => <Badge key={evidence} variant="secondary">{evidence}</Badge>)}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/35 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold">
+                  <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
+                  Limite declarado
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{selected.limitation}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Reveal>
+      </div>
     </section>
   )
 }

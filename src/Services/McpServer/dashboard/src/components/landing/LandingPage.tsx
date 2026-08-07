@@ -3,6 +3,7 @@ import { ArrowRight, Waypoints } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Reveal } from '@/components/ui/reveal'
 import { Hero } from '@/components/landing/Hero'
+import { InstallSection } from '@/components/landing/InstallSection'
 import { SignalsSection } from '@/components/landing/SignalsSection'
 import { ToolsGrid } from '@/components/landing/ToolsGrid'
 import { ChatDemoSection } from '@/components/landing/ChatDemoSection'
@@ -37,6 +38,8 @@ export function LandingPage({
         enabledCount={enabledCount}
         onNavigate={onNavigate}
       />
+
+      <InstallSection />
 
       <SignalsSection />
 

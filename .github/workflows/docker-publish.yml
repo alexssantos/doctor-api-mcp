@@ -1,0 +1,80 @@
+name: Publish Docker image and Helm chart
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+    paths:
+      - 'src/BuildingBlocks/**'
+      - 'src/Services/McpServer/**'
+      - 'infra/helm/doctor-api-mcp/**'
+      - '.github/workflows/docker-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: alexssantos/doctor-api-mcp
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Services/McpServer/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  chart:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Package chart with release version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          helm package infra/helm/doctor-api-mcp \
+            --version "${version}" \
+            --app-version "${version}" \
+            --destination dist
+
+      - name: Login to Docker Hub OCI registry
+        shell: bash
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | helm registry login registry-1.docker.io --username "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Push chart
+        shell: bash
+        run: helm push dist/doctor-api-mcp-chart-*.tgz oci://registry-1.docker.io/alexssantos

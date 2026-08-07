@@ -1,0 +1,54 @@
+{{- $namespace := default .Release.Namespace .Values.dataSources.kubernetesNamespace -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "doctor-api-mcp.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "doctor-api-mcp.labels" . | nindent 4 }}
+data:
+  ASPNETCORE_ENVIRONMENT: {{ ternary "Production" "Development" .Values.security.authentication.enabled | quote }}
+  Security__Authentication__Enabled: {{ .Values.security.authentication.enabled | quote }}
+  {{- $allowedNamespaces := .Values.security.allowedNamespaces | default (list $namespace) }}
+  {{- range $index, $value := $allowedNamespaces }}
+  Security__AllowedNamespaces__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $index, $value := .Values.security.allowedServiceHostSuffixes }}
+  Security__AllowedServiceHostSuffixes__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $index, $value := .Values.security.allowedServicePorts }}
+  Security__AllowedServicePorts__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  DataSources__Kubernetes__Namespace: {{ $namespace | quote }}
+  DataSources__Jaeger__BaseUrl: {{ default (printf "http://jaeger.%s.svc.cluster.local:16686" .Release.Namespace) .Values.dataSources.jaegerBaseUrl | quote }}
+  DataSources__Prometheus__BaseUrl: {{ default (printf "http://prometheus.%s.svc.cluster.local:9090" .Release.Namespace) .Values.dataSources.prometheusBaseUrl | quote }}
+  DataSources__Loki__BaseUrl: {{ default (printf "http://loki.%s.svc.cluster.local:3100" .Release.Namespace) .Values.dataSources.lokiBaseUrl | quote }}
+  Otel__Endpoint: {{ default (printf "http://jaeger.%s.svc.cluster.local:4317" .Release.Namespace) .Values.otel.endpoint | quote }}
+  Otel__CaptureBody: {{ .Values.otel.captureBody | quote }}
+  Discovery__Mode: {{ .Values.discovery.mode | quote }}
+  Discovery__KubernetesLabel: {{ .Values.discovery.kubernetesLabel | quote }}
+  Discovery__RescanSeconds: {{ .Values.discovery.rescanSeconds | quote }}
+  Discovery__RevalidateSeconds: {{ .Values.discovery.revalidateSeconds | quote }}
+  Discovery__ForgetAfterMinutes: {{ .Values.discovery.forgetAfterMinutes | quote }}
+  Discovery__StateConfigMap: {{ printf "%s-state" (include "doctor-api-mcp.fullname" .) | quote }}
+  {{- range $index, $value := .Values.discovery.excludeNamespaces }}
+  Discovery__ExcludeNamespaces__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $index, $value := .Values.discovery.excludeApps }}
+  Discovery__ExcludeApps__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  {{- range $index, $value := .Values.discovery.excludeOtelServices }}
+  Discovery__ExcludeOtelServices__{{ $index }}: {{ $value | quote }}
+  {{- end }}
+  Observability__Features__EnableRawQueries: {{ .Values.observability.enableRawQueries | quote }}
+  Observability__Features__EnableLogs: {{ .Values.observability.enableLogs | quote }}
+  Observability__Features__EnableDeploymentEvents: {{ .Values.observability.enableDeploymentEvents | quote }}
+  {{- with .Values.dashboardLinks.jaeger }}
+  Dashboard__Links__Jaeger: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.dashboardLinks.prometheus }}
+  Dashboard__Links__Prometheus: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.dashboardLinks.grafana }}
+  Dashboard__Links__Grafana: {{ . | quote }}
+  {{- end }}

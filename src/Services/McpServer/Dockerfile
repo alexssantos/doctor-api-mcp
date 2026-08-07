@@ -1,11 +1,12 @@
-FROM node:22-alpine AS dashboard-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS dashboard-build
 WORKDIR /dashboard
 COPY src/Services/McpServer/dashboard/package*.json ./
 RUN npm ci
 COPY src/Services/McpServer/dashboard/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG TARGETARCH
 WORKDIR /repo
 
 # Copy solution + project files first for layer caching
@@ -17,7 +18,7 @@ COPY src/Services/ProdutoAPI/McpApis.ProdutoAPI.csproj ./src/Services/ProdutoAPI
 COPY src/Services/McpServer/McpApis.McpServer.csproj ./src/Services/McpServer/
 
 # Restore (cached if .csproj unchanged)
-RUN dotnet restore src/Services/McpServer/McpApis.McpServer.csproj
+RUN dotnet restore src/Services/McpServer/McpApis.McpServer.csproj -a "$TARGETARCH"
 
 # Copy source
 COPY src/BuildingBlocks/ ./src/BuildingBlocks/
@@ -31,18 +32,29 @@ COPY --from=dashboard-build /wwwroot/dashboard ./src/Services/McpServer/wwwroot/
 RUN dotnet publish src/Services/McpServer/McpApis.McpServer.csproj \
     -c Release \
     -o /app/publish \
+    -a "$TARGETARCH" \
     --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
-USER appuser
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="doctor-api-mcp" \
+      org.opencontainers.image.description="MCP server for Kubernetes observability and explainable incident analysis" \
+      org.opencontainers.image.url="https://github.com/alexssantos/doctor-api-mcp" \
+      org.opencontainers.image.source="https://github.com/alexssantos/doctor-api-mcp" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="MIT"
 
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:4000
 EXPOSE 4000
+
+# Official .NET Linux images provide the non-root user through APP_UID.
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "McpApis.McpServer.dll"]
 

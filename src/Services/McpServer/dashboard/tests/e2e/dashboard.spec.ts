@@ -387,6 +387,37 @@ test('navega por health, anomalias, dependências, timeline e RCA sem expor quer
     path: testInfo.outputPath('desktop-project-hero.png'),
   })
 
+  const installHeading = page.getByRole('heading', { name: 'Do zero ao radar no cluster em uma linha' })
+  await installHeading.scrollIntoViewIfNeeded()
+  await expect(installHeading).toBeVisible()
+  await expectFullyOpaque(installHeading.locator('xpath=ancestor::div[contains(@class,"opacity-0")][1]'))
+  await page.getByRole('button', { name: 'PowerShell' }).click()
+  await expect(page.getByText(/install\.ps1 \| iex/)).toBeVisible()
+  await expectFullyOpaque(page.locator('section[aria-labelledby="instalar-heading"] > div.opacity-0').last())
+  await page.locator('section[aria-labelledby="instalar-heading"]').screenshot({
+    path: testInfo.outputPath('desktop-project-install.png'),
+  })
+
+  const signalsHeading = page.getByRole('heading', { name: 'Veja o que cada fonte acrescenta à investigação' })
+  await signalsHeading.scrollIntoViewIfNeeded()
+  await expectFullyOpaque(signalsHeading.locator('xpath=ancestor::div[contains(@class,"opacity-0")][1]'))
+  await page.getByRole('button', { name: /Cluster Kubernetes/ }).click()
+  await expect(page.getByText('A regressão apareceu quatro minutos após o deploy da revisão 17.')).toBeVisible()
+  await expectFullyOpaque(page.locator('#signal-detail').locator('xpath=ancestor::div[contains(@class,"opacity-0")][1]'))
+  await page.locator('section[aria-labelledby="sinais-heading"]').screenshot({
+    path: testInfo.outputPath('desktop-project-signals.png'),
+  })
+
+  const practiceHeading = page.getByRole('heading', { name: 'Escolha uma pergunta e veja como a resposta é construída' })
+  await practiceHeading.scrollIntoViewIfNeeded()
+  await expectFullyOpaque(practiceHeading.locator('xpath=ancestor::div[contains(@class,"opacity-0")][1]'))
+  await page.getByRole('button', { name: /Causa provável/ }).click()
+  await expect(page.getByText(/Hipótese principal, confiança 86%/)).toBeVisible()
+  await expect(page.getByText(/recomendação é somente leitura/)).toBeVisible()
+  await page.locator('section[aria-labelledby="chat-heading"]').screenshot({
+    path: testInfo.outputPath('desktop-project-practice.png'),
+  })
+
   const toolsHeading = page.getByRole('heading', { name: '8 tools vNext para investigação orientada por evidências' })
   await toolsHeading.scrollIntoViewIfNeeded()
   await expect(toolsHeading).toBeVisible()
@@ -478,6 +509,22 @@ test('mantém navegação por teclado, tema escuro, touch targets e layout móve
   const switches = page.getByRole('switch')
   await expect(switches).toHaveCount(2)
   for (const toggle of await switches.all()) await expect(toggle).toBeDisabled()
+
+  await page.getByRole('tab', { name: 'Projeto' }).click()
+  const mobileInstall = page.locator('section[aria-labelledby="instalar-heading"]')
+  await mobileInstall.scrollIntoViewIfNeeded()
+  await expect(mobileInstall).toBeVisible()
+  for (const reveal of await mobileInstall.locator('div.opacity-0').all()) await expectFullyOpaque(reveal)
+  await mobileInstall.screenshot({ path: testInfo.outputPath('mobile-project-install-dark.png') })
+
+  const projectWidths = await page.evaluate(() => ({
+    documentClient: document.documentElement.clientWidth,
+    documentScroll: document.documentElement.scrollWidth,
+    bodyClient: document.body.clientWidth,
+    bodyScroll: document.body.scrollWidth,
+  }))
+  expect(projectWidths.documentScroll).toBe(projectWidths.documentClient)
+  expect(projectWidths.bodyScroll).toBe(projectWidths.bodyClient)
 
   expect(runtimeErrors).toEqual([])
 })

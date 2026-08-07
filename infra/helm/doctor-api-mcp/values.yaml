@@ -1,0 +1,138 @@
+replicaCount: 2
+
+image:
+  repository: alexssantos/doctor-api-mcp
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: "doctor-api-mcp"
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 4000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: doctor-api-mcp.local
+  path: /
+  pathType: Prefix
+  tls: []
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1654
+  runAsGroup: 1654
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  readiness:
+    initialDelaySeconds: 2
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  startup:
+    periodSeconds: 3
+    timeoutSeconds: 2
+    failureThreshold: 40
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: false
+
+security:
+  # Disabled for the quick start. Enable it and provide both keys before
+  # exposing the service outside a trusted development cluster.
+  authentication:
+    enabled: false
+    existingSecret: ""
+    readerKey: ""
+    adminKey: ""
+  allowedNamespaces: []
+  allowedServiceHostSuffixes:
+    - .svc.cluster.local
+  allowedServicePorts:
+    - 80
+    - 443
+    - 8080
+
+dataSources:
+  kubernetesNamespace: ""
+  jaegerBaseUrl: ""
+  prometheusBaseUrl: ""
+  lokiBaseUrl: ""
+
+otel:
+  endpoint: ""
+  captureBody: false
+
+discovery:
+  mode: Auto
+  kubernetesLabel: mcp-apis/indexed
+  rescanSeconds: 60
+  revalidateSeconds: 300
+  forgetAfterMinutes: 60
+  excludeNamespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+  excludeApps:
+    - doctor-api-mcp
+    - mcpserver
+    - jaeger
+    - prometheus
+    - grafana
+    - loki
+    - promtail
+    - kubernetes
+  excludeOtelServices:
+    - jaeger-query
+    - McpServer
+
+observability:
+  enableRawQueries: false
+  enableLogs: true
+  enableDeploymentEvents: true
+
+dashboardLinks:
+  jaeger: ""
+  prometheus: ""
+  grafana: ""
+
+extraEnv: []
+nodeSelector: {}
+tolerations: []
+affinity: {}

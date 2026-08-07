@@ -1,226 +1,186 @@
-import { useEffect, useRef, type RefObject } from 'react'
-import { animate, onScroll, svg, utils } from 'animejs'
-import { Activity, Boxes, Brain, FileJson, Flame, ScrollText, Waypoints } from 'lucide-react'
-import type { ComponentType } from 'react'
+import { useState, type ComponentType } from 'react'
+import { Activity, ArrowRight, Boxes, FileJson, Flame, ScrollText, Waypoints } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Reveal } from '@/components/ui/reveal'
 import { SectionHeading } from '@/components/landing/SectionHeading'
+import { cn } from '@/lib/utils'
 
 interface Signal {
+  id: string
   icon: ComponentType<{ className?: string }>
   source: string
   title: string
-  body: string
+  captures: string
+  example: string
+  normalized: string
+  conclusion: string
+  evidence: string[]
   tone: string
-  status: 'ativo'
+  surface: string
 }
-
 const SIGNALS: Signal[] = [
   {
+    id: 'traces',
     icon: Waypoints,
     source: 'Jaeger',
     title: 'Traces',
-    body: 'Call chain completa de cada requisição: quem chamou quem, com timings e queries SQL no caminho.',
+    captures: 'Cadeia de chamadas, duração e erro de cada etapa.',
+    example: 'ProdutoAPI → PrecoAPI · 2,4 s · HTTP 504',
+    normalized: 'Dependência observada com latência e taxa de falha.',
+    conclusion: 'A lentidão começa na chamada da ProdutoAPI para a PrecoAPI.',
+    evidence: ['span da requisição', 'serviço de origem', 'serviço de destino'],
     tone: 'text-chart-2',
-    status: 'ativo',
+    surface: 'bg-chart-2/10',
   },
   {
+    id: 'metrics',
     icon: Flame,
     source: 'Prometheus',
     title: 'Métricas',
-    body: 'RED, CPU e memória consultados por descritores internos limitados; o agente não envia PromQL arbitrário.',
+    captures: 'Taxa de erros, latência, disponibilidade e saturação.',
+    example: 'P95 +38% · erros 5xx 18% · janela 30 min',
+    normalized: 'Score por dimensão com baseline e cobertura.',
+    conclusion: 'A degradação é real, recente e afeta latência e erros.',
+    evidence: ['P95', 'error rate', 'amostras da janela'],
     tone: 'text-chart-3',
-    status: 'ativo',
+    surface: 'bg-chart-3/10',
   },
   {
+    id: 'kubernetes',
     icon: Boxes,
     source: 'Kubernetes',
-    title: 'Estado do cluster',
-    body: 'Pods, deployments, restarts, revisões e Events lidos in-cluster via RBAC e allowlist.',
+    title: 'Cluster',
+    captures: 'Pods, réplicas, restarts, revisions e Events.',
+    example: 'revision 17 · 1/2 pods prontos · 4 restarts',
+    normalized: 'Estado do workload ligado à mesma identidade de serviço.',
+    conclusion: 'A regressão apareceu quatro minutos após o deploy da revisão 17.',
+    evidence: ['Deployment', 'Pod status', 'Kubernetes Event'],
     tone: 'text-chart-1',
-    status: 'ativo',
+    surface: 'bg-chart-1/10',
   },
   {
+    id: 'openapi',
     icon: FileJson,
     source: 'OpenAPI',
     title: 'Contratos',
-    body: 'Rotas e schemas de cada aplicação — a base para explicar o que uma API faz.',
+    captures: 'Operações, rotas, métodos e schemas publicados.',
+    example: 'GET /api/products · resposta 200 · Product[]',
+    normalized: 'Catálogo de capacidades validado por aplicação.',
+    conclusion: 'O agente sabe o que a API faz sem inventar endpoints.',
+    evidence: ['operationId', 'response codes', 'schema'],
     tone: 'text-chart-4',
-    status: 'ativo',
+    surface: 'bg-chart-4/10',
   },
   {
+    id: 'logs',
     icon: ScrollText,
     source: 'Loki',
     title: 'Logs',
-    body: 'Padrões e fingerprints internos correlacionados à timeline, com redaction de segredos e PII.',
+    captures: 'Padrões de erro sanitizados e ligados ao intervalo do incidente.',
+    example: '12 ocorrências · timeout upstream · sem PII',
+    normalized: 'Fingerprint, severidade e frequência, sem consulta raw.',
+    conclusion: 'Os timeouts confirmam a falha downstream vista nos traces.',
+    evidence: ['fingerprint', 'timestamp', 'contagem'],
     tone: 'text-chart-2',
-    status: 'ativo',
+    surface: 'bg-chart-2/10',
   },
 ]
 
-const SIGNAL_X = [10, 30, 50, 70, 90]
-const TRAVEL_MS = 1200
-const STAGGER_MS = TRAVEL_MS / SIGNAL_X.length
-
-/** Alternates the curve's bow left/right per column so the cascade reads as a little wave. */
-function signalPathD(x: number, i: number) {
-  const bow = i % 2 === 0 ? 3 : -3
-  return `M ${x} 4 C ${x + bow} 18 ${x - bow} 30 ${x} 44`
-}
-
-/**
- * Each signal card rides its own curved motion path down into the correlation box, one after
- * another in a staggered cascade (not all five at once). The correlation box's outline flashes
- * on and fades on every arrival, in the same order.
- */
-function SignalCascade({ highlightRef }: { highlightRef: RefObject<HTMLDivElement | null> }) {
-  const ref = useRef<SVGSVGElement | null>(null)
-
-  useEffect(() => {
-    const el = ref.current
-    const highlight = highlightRef.current
-    if (!el || !highlight) return
-
-    const balls = SIGNAL_X.map((_, i) => el.querySelector<SVGCircleElement>(`#signal-ball-${i}`))
-    const paths = SIGNAL_X.map((_, i) => el.querySelector<SVGPathElement>(`#signal-path-${i}`))
-    if (balls.some((ball) => !ball) || paths.some((path) => !path)) return
-
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // Park each ball at rest on its own path instead of leaving it invisible.
-      balls.forEach((ball, i) => utils.set(ball!, { translateX: SIGNAL_X[i], translateY: 4, opacity: 0.7 }))
-      utils.set(highlight, { opacity: 0.5 })
-      return
-    }
-
-    const animations = paths.map((path, i) =>
-      animate(balls[i]!, {
-        // Rides its own dashed curve; rotate is unused (the ball is round) but harmless.
-        ...svg.createMotionPath(path!),
-        opacity: [
-          { to: 0, duration: 0 },
-          { to: 1, duration: 140 },
-          { to: 1, duration: TRAVEL_MS - 280 },
-          { to: 0, duration: 140 },
-        ],
-        duration: TRAVEL_MS,
-        delay: i * STAGGER_MS,
-        loop: true,
-        ease: 'inOutSine',
-        autoplay: onScroll({ enter: 'bottom top', leave: 'top bottom' }),
-      }),
-    )
-
-    // Flashes the correlation box's outline on each arrival, evenly spaced across one TRAVEL_MS
-    // loop (5 pulses at 0/STAGGER/2*STAGGER/3*STAGGER/4*STAGGER - matches the balls' cascade above).
-    const pulse = animate(highlight, {
-      opacity: [
-        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
-        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
-        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
-        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
-        { to: 1, duration: 45 }, { to: 0, duration: 45 }, { to: 0, duration: STAGGER_MS - 90 },
-      ],
-      duration: TRAVEL_MS,
-      loop: true,
-      ease: 'linear',
-      autoplay: onScroll({ enter: 'bottom top', leave: 'top bottom' }),
-    })
-
-    return () => {
-      animations.forEach((animation) => animation.revert())
-      pulse.revert()
-    }
-  }, [highlightRef])
-
-  return (
-    <svg ref={ref} viewBox="0 0 100 48" preserveAspectRatio="none" className="h-12 w-full" aria-hidden="true">
-      {SIGNAL_X.map((x, i) => (
-        <path
-          key={x}
-          id={`signal-path-${i}`}
-          d={signalPathD(x, i)}
-          fill="none"
-          stroke="var(--border)"
-          strokeWidth="0.6"
-          strokeDasharray="1.6 2.2"
-          strokeLinecap="round"
-        />
-      ))}
-      {SIGNAL_X.map((x, i) => (
-        <circle
-          key={x}
-          id={`signal-ball-${i}`}
-          r="2.2"
-          fill="var(--chart-2)"
-          opacity="0"
-          style={{ filter: 'drop-shadow(0 0 3px var(--chart-2))' }}
-        />
-      ))}
-    </svg>
-  )
-}
-
 export function SignalsSection() {
-  const correlationHighlightRef = useRef<HTMLDivElement | null>(null)
+  const [selectedId, setSelectedId] = useState(SIGNALS[0].id)
+  const selected = SIGNALS.find((signal) => signal.id === selectedId) ?? SIGNALS[0]
+  const SelectedIcon = selected.icon
 
   return (
     <section aria-labelledby="sinais-heading">
       <SectionHeading
         id="sinais-heading"
         eyebrow="Sinais"
-        title="Tudo o que o radar capta, correlacionado"
-        description="Cada sinal sozinho é ruído. O MCP cruza traces, métricas, estado do cluster e contratos na mesma resposta, para o modelo raciocinar sobre o sistema — não sobre planilhas separadas."
+        title="Veja o que cada fonte acrescenta à investigação"
+        description="Selecione um sinal para acompanhar o caminho do dado bruto até uma conclusão verificável. Nenhuma cor ou animação é necessária para entender o resultado."
       />
 
-      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {SIGNALS.map((signal, i) => {
+      <div className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-5" role="group" aria-label="Fontes de sinais observáveis">
+        {SIGNALS.map((signal) => {
           const Icon = signal.icon
+          const active = signal.id === selected.id
           return (
-            <Reveal key={signal.title} delay={i * 60}>
-              <Card className="h-full">
-                <CardContent className="flex h-full flex-col gap-2 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <Icon className={`size-5 ${signal.tone}`} />
-                    <Badge variant="success" className="text-[10px]">
-                      {signal.status}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{signal.title}</p>
-                    <p className="font-mono text-[11px] text-muted-foreground">{signal.source}</p>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">{signal.body}</p>
-                </CardContent>
-              </Card>
-            </Reveal>
+            <button
+              key={signal.id}
+              type="button"
+              aria-pressed={active}
+              aria-controls="signal-detail"
+              onClick={() => setSelectedId(signal.id)}
+              className={cn(
+                'min-h-24 cursor-pointer rounded-xl border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                active ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-accent/60',
+              )}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className={cn('flex size-9 items-center justify-center rounded-lg', signal.surface)}>
+                  <Icon className={cn('size-4', signal.tone)} aria-hidden="true" />
+                </span>
+                <span className={cn('size-2 rounded-full', active ? 'bg-primary' : 'bg-border')} aria-hidden="true" />
+              </span>
+              <span className="mt-3 block text-sm font-semibold">{signal.title}</span>
+              <span className="block font-mono text-[11px] text-muted-foreground">{signal.source}</span>
+            </button>
           )
         })}
       </div>
 
-      <SignalCascade highlightRef={correlationHighlightRef} />
+      <Reveal delay={60} className="mt-3">
+        <Card id="signal-detail" className="overflow-hidden border-primary/30" aria-live="polite">
+          <CardContent className="p-0">
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-stretch">
+              <div className="p-5">
+                <div className="flex items-center gap-2">
+                  <span className={cn('flex size-9 items-center justify-center rounded-lg', selected.surface)}>
+                    <SelectedIcon className={cn('size-4', selected.tone)} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">1 · O que chega</p>
+                    <p className="text-sm font-semibold">{selected.source}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.captures}</p>
+                <code className="mt-3 block rounded-lg bg-muted px-3 py-2 font-mono text-xs leading-relaxed">{selected.example}</code>
+              </div>
 
-      <Reveal>
-        <Card className="relative border-primary/40 bg-primary/5">
-          <div
-            ref={correlationHighlightRef}
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-xl opacity-0"
-            style={{ boxShadow: 'inset 0 0 0 2px var(--chart-2), 0 0 24px var(--chart-2)' }}
-          />
-          <CardContent className="flex flex-col items-center gap-3 p-5 text-center sm:flex-row sm:text-left">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <Brain className="size-5" />
+              <div className="hidden items-center text-muted-foreground lg:flex" aria-hidden="true">
+                <ArrowRight className="size-4" />
+              </div>
+
+              <div className="border-t border-border p-5 lg:border-t-0">
+                <div className="flex items-center gap-2">
+                  <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Activity className="size-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">2 · Como é tratado</p>
+                    <p className="text-sm font-semibold">Provider normalizado</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.normalized}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {selected.evidence.map((item) => <Badge key={item} variant="outline">{item}</Badge>)}
+                </div>
+              </div>
+
+              <div className="hidden items-center text-muted-foreground lg:flex" aria-hidden="true">
+                <ArrowRight className="size-4" />
+              </div>
+
+              <div className="border-t border-border bg-primary/5 p-5 lg:border-t-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">3 · O que o agente recebe</p>
+                <p className="mt-2 text-base font-semibold leading-snug">{selected.conclusion}</p>
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  Com evidências, freshness, cobertura e limitações explícitas — sem expor consultas raw.
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">Correlação no MCP Server</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                Health, Dependency, Anomaly, Correlation e RCA Engines trabalham sobre providers normalizados.
-                O agente recebe conclusão, evidências e limitações — nunca consultas raw ou causalidade inventada.
-              </p>
-            </div>
-            <Activity className="hidden size-4 shrink-0 text-primary sm:block" />
           </CardContent>
         </Card>
       </Reveal>

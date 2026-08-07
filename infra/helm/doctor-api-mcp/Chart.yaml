@@ -1,0 +1,16 @@
+apiVersion: v2
+name: doctor-api-mcp-chart
+description: MCP server that correlates Kubernetes and observability signals for AI agents
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/alexssantos/doctor-api-mcp
+sources:
+  - https://github.com/alexssantos/doctor-api-mcp
+keywords:
+  - mcp
+  - kubernetes
+  - observability
+  - sre
+maintainers:
+  - name: Alex Santos

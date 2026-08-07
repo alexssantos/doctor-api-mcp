@@ -7,6 +7,7 @@ Projeto de estudo que demonstra como expor observabilidade de um cluster Kuberne
 ## Índice
 
 - [Visão Geral da Arquitetura](#visão-geral-da-arquitetura)
+- [Instalação rápida](#instalação-rápida)
 - [Serviços](#serviços)
 - [Stack Tecnológica](#stack-tecnológica)
 - [Estrutura de Arquivos](#estrutura-de-arquivos)
@@ -20,6 +21,44 @@ Projeto de estudo que demonstra como expor observabilidade de um cluster Kuberne
 - [Portas e Acessos](#portas-e-acessos)
 - [Configuração do Ambiente](#configuração-do-ambiente)
 - [Desenvolvimento com Tilt](#desenvolvimento-com-tilt)
+
+---
+
+## Instalação rápida
+
+Instale o MCP Server no contexto Kubernetes atual com uma única linha:
+
+**Linux / WSL:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexssantos/doctor-api-mcp/master/install.sh | bash
+```
+
+**PowerShell** — usa as ferramentas nativas ou delega para o WSL:
+
+```powershell
+irm https://raw.githubusercontent.com/alexssantos/doctor-api-mcp/master/install.ps1 | iex
+```
+
+**Helm:**
+
+```bash
+helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.0 -n mcp-apis --create-namespace
+```
+
+Depois, abra o acesso local:
+
+```bash
+kubectl port-forward service/doctor-api-mcp 4000:4000 -n mcp-apis
+```
+
+- Dashboard: `http://localhost:4000/dashboard`
+- MCP: `http://localhost:4000/`
+- Imagem: `alexssantos/doctor-api-mcp:latest`
+
+Veja configuração de providers, autenticação, upgrade e desinstalação em [doc/installation.md](doc/installation.md).
+
+> Desenvolvimento local: o fluxo completo com APIs, bancos e observabilidade continua sendo `./infra/scripts/ps/up-k8s.ps1 -Build` no Windows + WSL/k3d.
 
 ---
 
@@ -140,7 +179,7 @@ Transporte: **Streamable HTTP** via `POST /` (protocolo MCP 2025-03-26).
 | Tecnologia | Uso |
 |---|---|
 | k3d + k3s | Cluster Kubernetes local em Docker |
-| Docker | Runtime dos containers (buildado localmente, `imagePullPolicy: Never`) |
+| Docker | Runtime dos containers; build local no k3d e imagem pública do McpServer no Docker Hub |
 | Traefik v3 (nativo do K3s) | Roteamento local e afinidade de sessão sem controller externo |
 | Kubernetes Gateway API (AKS) | Entrada TLS do ambiente alvo por controller gerenciado pela plataforma |
 | Jaeger | Distributed tracing — recebe spans OTLP, expõe UI e API REST |
