@@ -7,11 +7,18 @@ namespace McpApis.McpServer.Services.Contracts;
 public interface IPrometheusCollector
 {
     /// <summary>Executes a PromQL instant query (current value).</summary>
-    Task<System.Text.Json.JsonElement> QueryAsync(string promql);
+    Task<System.Text.Json.JsonElement> QueryAsync(
+        string promql,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Executes a PromQL range query between start and end, at the given step (e.g. "15s").</summary>
-    Task<System.Text.Json.JsonElement> QueryRangeAsync(string promql, DateTimeOffset start, DateTimeOffset end, string step);
+    Task<System.Text.Json.JsonElement> QueryRangeAsync(
+        string promql,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        string step,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Returns the current scrape target health (up/down) as reported by Prometheus.</summary>
-    Task<System.Text.Json.JsonElement> GetTargetsAsync();
+    Task<System.Text.Json.JsonElement> GetTargetsAsync(CancellationToken cancellationToken = default);
 }

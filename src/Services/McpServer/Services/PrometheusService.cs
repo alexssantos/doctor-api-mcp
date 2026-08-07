@@ -13,24 +13,29 @@ public class PrometheusService : IPrometheusCollector
         _http = http;
     }
 
-    public async Task<JsonElement> QueryAsync(string promql)
+    public async Task<JsonElement> QueryAsync(string promql, CancellationToken cancellationToken = default)
     {
         var url = $"/api/v1/query?query={Uri.EscapeDataString(promql)}";
-        return await _http.GetFromJsonAsync<JsonElement>(url);
+        return await _http.GetFromJsonAsync<JsonElement>(url, cancellationToken);
     }
 
-    public async Task<JsonElement> QueryRangeAsync(string promql, DateTimeOffset start, DateTimeOffset end, string step)
+    public async Task<JsonElement> QueryRangeAsync(
+        string promql,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        string step,
+        CancellationToken cancellationToken = default)
     {
         var url = "/api/v1/query_range" +
                   $"?query={Uri.EscapeDataString(promql)}" +
                   $"&start={start.ToUnixTimeSeconds()}" +
                   $"&end={end.ToUnixTimeSeconds()}" +
                   $"&step={Uri.EscapeDataString(step)}";
-        return await _http.GetFromJsonAsync<JsonElement>(url);
+        return await _http.GetFromJsonAsync<JsonElement>(url, cancellationToken);
     }
 
-    public async Task<JsonElement> GetTargetsAsync()
+    public async Task<JsonElement> GetTargetsAsync(CancellationToken cancellationToken = default)
     {
-        return await _http.GetFromJsonAsync<JsonElement>("/api/v1/targets");
+        return await _http.GetFromJsonAsync<JsonElement>("/api/v1/targets", cancellationToken);
     }
 }
