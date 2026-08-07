@@ -5,6 +5,9 @@ using McpApis.McpServer.Engines.Health;
 using McpApis.McpServer.Engines.Dependencies;
 using McpApis.McpServer.Engines.Anomalies;
 using McpApis.McpServer.Engines.Correlation;
+using McpApis.McpServer.Engines.Recommendations;
+using McpApis.McpServer.Engines.RootCause;
+using McpApis.McpServer.Engines.SystemHealth;
 using McpApis.McpServer.Infrastructure.Options;
 using McpApis.McpServer.Infrastructure.Security;
 using McpApis.McpServer.Infrastructure.Telemetry;
@@ -89,9 +92,13 @@ builder.Services.AddScoped<IKubernetesProvider, KubernetesProvider>();
 builder.Services.AddScoped<IDeploymentEventProvider, DeploymentEventProvider>();
 builder.Services.AddScoped<IApplicationSpecProvider, ApplicationSpecProvider>();
 builder.Services.AddScoped<IHealthEngine, HealthEngine>();
+builder.Services.AddScoped<IHealthAnalysisService, HealthAnalysisService>();
 builder.Services.AddScoped<IDependencyEngine, DependencyEngine>();
 builder.Services.AddScoped<IAnomalyEngine, AnomalyEngine>();
 builder.Services.AddScoped<ICorrelationEngine, CorrelationEngine>();
+builder.Services.AddSingleton<IRecommendationEngine, RecommendationEngine>();
+builder.Services.AddScoped<IRootCauseEngine, RootCauseEngine>();
+builder.Services.AddScoped<ISystemHealthEngine, SystemHealthEngine>();
 
 var mcpBuilder = builder.Services
     .AddMcpServer(opts =>
@@ -116,7 +123,9 @@ var mcpBuilder = builder.Services
     .WithTools<ServiceGetScoreTool>()
     .WithTools<ServiceGetDependenciesTool>()
     .WithTools<ServiceDetectAnomaliesTool>()
-    .WithTools<ServiceGetIncidentTimelineTool>();
+    .WithTools<ServiceGetIncidentTimelineTool>()
+    .WithTools<ServiceFindRootCauseTool>()
+    .WithTools<SystemGetHealthSummaryTool>();
 
 if (builder.Configuration.GetValue<bool>("Observability:Features:EnableRawQueries"))
     mcpBuilder.WithTools<QueryMetricsTool>();

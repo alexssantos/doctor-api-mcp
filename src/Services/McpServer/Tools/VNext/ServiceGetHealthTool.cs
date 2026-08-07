@@ -3,7 +3,6 @@ using Microsoft.Extensions.Options;
 using McpApis.McpServer.Domain.Contracts;
 using McpApis.McpServer.Domain.Models;
 using McpApis.McpServer.Engines.Health;
-using McpApis.McpServer.Infrastructure.Caching;
 using McpApis.McpServer.Infrastructure.Options;
 using McpApis.McpServer.Services.Contracts;
 using ModelContextProtocol.Server;
@@ -17,10 +16,8 @@ public sealed class ServiceGetHealthTool
      Description("Calculates deterministic service health from RED metrics and Kubernetes stability. Returns score, coverage, findings, evidence, freshness and explicit partial/unavailable states.")]
     public static Task<ObservationEnvelope<HealthReport>> Execute(
         IServiceIdentityResolver resolver,
-        IHealthEngine engine,
-        IObservabilityCache cache,
+        IHealthAnalysisService health,
         IOptions<ObservabilityLimitsOptions> limits,
-        IOptions<ObservabilityCacheOptions> cacheOptions,
         [Description("Canonical service name or alias.")] string serviceName,
         [Description("Kubernetes namespace. Required when the name is ambiguous.")] string? namespaceName = null,
         [Description("Analysis window in minutes. Defaults to 30 and is capped by server policy.")] int? windowMinutes = null,
@@ -41,24 +38,10 @@ public sealed class ServiceGetHealthTool
 
                 var identity = resolution.Identity!;
                 var app = resolution.Application!;
-                var result = await GetHealthAsync(
-                    identity, app.Selector, window, engine, cache, cacheOptions.Value, ct);
+                var result = await health.EvaluateAsync(
+                    identity, app.Selector, window, ct);
                 return ObservationEnvelope<HealthReport>.Success(
                     result.Data, identity, window, result.Sources, result.Evidence, result.Warnings);
             },
-            cancellationToken);
-
-    internal static Task<AnalysisResult<HealthReport>> GetHealthAsync(
-        ServiceIdentity identity,
-        IReadOnlyDictionary<string, string> selector,
-        TimeWindow window,
-        IHealthEngine engine,
-        IObservabilityCache cache,
-        ObservabilityCacheOptions cacheOptions,
-        CancellationToken cancellationToken) =>
-        cache.GetOrCreateAsync(
-            $"health:{identity.Key}:{Math.Round(window.Span.TotalMinutes)}",
-            TimeSpan.FromSeconds(cacheOptions.HealthTtlSeconds),
-            token => engine.EvaluateAsync(identity, selector, window, token),
             cancellationToken);
 }
