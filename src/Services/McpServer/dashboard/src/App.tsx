@@ -1,119 +1,136 @@
 import { Suspense, lazy, useState } from 'react'
+import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 
-import { Header } from '@/components/dashboard/Header'
-import { QuickLinks } from '@/components/dashboard/QuickLinks'
-import { StatsCards } from '@/components/dashboard/StatsCards'
+import { AnomaliesPanel } from '@/components/dashboard/AnomaliesPanel'
 import { ApplicationsPanel } from '@/components/dashboard/ApplicationsPanel'
-import { TracesPanel } from '@/components/dashboard/TracesPanel'
 import { DependenciesPanel } from '@/components/dashboard/DependenciesPanel'
+import { Header } from '@/components/dashboard/Header'
+import { IncidentTimelinePanel } from '@/components/dashboard/IncidentTimelinePanel'
+import { QuickLinks } from '@/components/dashboard/QuickLinks'
+import { RootCausePanel } from '@/components/dashboard/RootCausePanel'
+import { ServiceHealthPanel } from '@/components/dashboard/ServiceHealthPanel'
+import { ServiceSpecPanel } from '@/components/dashboard/ServiceSpecPanel'
 import { ServiceSwitcher } from '@/components/dashboard/ServiceSwitcher'
+import { SystemOverviewPanel } from '@/components/dashboard/SystemOverviewPanel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import { useApplications, useOverview } from '@/lib/api'
+import { applicationKey, useApplications, useOverview } from '@/lib/api'
 import { TABS, type TabId } from '@/lib/tabs'
 import { useHashTab } from '@/lib/useHashTab'
 
-// Recharts and the landing page are dead weight on the default tab — Radix
-// mounts tab content only when selected, so defer their chunks until then.
-const MetricsPanel = lazy(() =>
-  import('@/components/dashboard/MetricsPanel').then((m) => ({ default: m.MetricsPanel })),
-)
 const LandingPage = lazy(() =>
-  import('@/components/landing/LandingPage').then((m) => ({ default: m.LandingPage })),
+  import('@/components/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 )
 
 function App() {
-  const { data: overview, isError: overviewError, dataUpdatedAt, refetch, isFetching } = useOverview()
-  const {
-    data: applicationsData,
-    isLoading: appsLoading,
-    isError: appsError,
-    refetch: refetchApps,
-  } = useApplications()
-  const [selectedApp, setSelectedApp] = useState<string | undefined>(undefined)
-  const [tab, setTab] = useHashTab<TabId>(TABS, 'operacao')
+  const overviewQuery = useOverview()
+  const applicationsQuery = useApplications()
+  const queryClient = useQueryClient()
+  const fetchingCount = useIsFetching()
+  const [selectedKey, setSelectedKey] = useState<string>()
+  const [minutes, setMinutes] = useState(30)
+  const [tab, setTab] = useHashTab<TabId>(TABS, 'visao')
 
-  const applications = applicationsData?.applications ?? []
-  const enabledCount = applications.filter((app) => app.enabled).length
+  const applications = applicationsQuery.data?.applications ?? []
   const activeApp =
-    applications.find((app) => app.name === selectedApp) ??
-    applications.find((app) => app.enabled) ??
+    applications.find((app) => applicationKey(app) === selectedKey) ??
+    applications.find((app) => app.enabled && app.namespace) ??
     applications[0]
+  const activeKey = activeApp ? applicationKey(activeApp) : undefined
+  const enabledCount = applications.filter((app) => app.enabled).length
+  const lastUpdated = Math.max(overviewQuery.dataUpdatedAt, applicationsQuery.dataUpdatedAt)
 
-  // Jaeger service names are case-sensitive; prefer the raw OTel name.
-  const tracesService = activeApp ? (activeApp.otelServiceName ?? activeApp.name) : undefined
-  const metricsService = activeApp?.name
+  const inspectService = (namespace: string, name: string) => {
+    const app = applications.find((candidate) => candidate.namespace === namespace && candidate.name === name)
+    if (app) setSelectedKey(applicationKey(app))
+    setTab('servico')
+  }
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="min-h-dvh gap-0 bg-background">
-      <a href="#main" className="skip-link">
-        Pular para o conteúdo
-      </a>
+      <a href="#main" className="skip-link">Pular para o conteúdo</a>
 
       <Header
-        lastUpdated={dataUpdatedAt}
-        isFetching={isFetching}
-        isHealthy={!overviewError && !appsError}
-        onRefresh={() => {
-          refetch()
-          refetchApps()
-        }}
+        lastUpdated={lastUpdated}
+        isFetching={fetchingCount > 0}
+        systemStatus={overviewQuery.data?.system.healthStatus}
+        hasDataError={overviewQuery.isError || applicationsQuery.isError}
+        onRefresh={() => queryClient.invalidateQueries()}
       />
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-        <TabsContent value="operacao" className="flex flex-col gap-5">
-          <QuickLinks links={overview?.links} />
-
-          <StatsCards
-            cluster={overview?.cluster}
-            applicationsCount={applications.length}
-            enabledCount={enabledCount}
-            isLoading={appsLoading}
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[90rem] px-4 py-5 sm:px-6 lg:px-8">
+        <TabsContent value="visao" className="flex flex-col gap-4">
+          <SystemOverviewPanel
+            overview={overviewQuery.data}
+            isLoading={overviewQuery.isLoading}
+            isError={overviewQuery.isError}
+            onRetry={() => overviewQuery.refetch()}
+            onInspect={(service) => inspectService(service.namespace, service.serviceName)}
           />
-
-          <ApplicationsPanel
-            applications={applications}
-            lastScanAt={applicationsData?.lastScanAt ?? null}
-            isLoading={appsLoading}
-            isError={appsError}
-            selectedApp={activeApp?.name}
-            onSelectApp={setSelectedApp}
-            onRetry={() => refetchApps()}
-          />
+          <QuickLinks links={overviewQuery.data?.links} />
         </TabsContent>
 
-        <TabsContent value="observabilidade" className="flex flex-col gap-5">
+        <TabsContent value="servico" className="flex flex-col gap-4">
           <ServiceSwitcher
             applications={applications}
-            selected={activeApp?.name}
-            onSelect={setSelectedApp}
+            selectedKey={activeKey}
+            onSelect={setSelectedKey}
+            minutes={minutes}
+            onMinutesChange={setMinutes}
           />
-
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <TracesPanel service={tracesService} />
-            <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-              <MetricsPanel service={metricsService} />
-            </Suspense>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ServiceHealthPanel app={activeApp} minutes={minutes} />
+            <AnomaliesPanel app={activeApp} minutes={minutes} />
           </div>
+          <DependenciesPanel app={activeApp} minutes={minutes} />
+          <ServiceSpecPanel app={activeApp} />
+        </TabsContent>
 
-          <DependenciesPanel />
+        <TabsContent value="incidente" className="flex flex-col gap-4">
+          <ServiceSwitcher
+            applications={applications}
+            selectedKey={activeKey}
+            onSelect={setSelectedKey}
+            minutes={minutes}
+            onMinutesChange={setMinutes}
+          />
+          <div className="grid items-start gap-4 xl:grid-cols-2">
+            <IncidentTimelinePanel app={activeApp} minutes={minutes} />
+            <RootCausePanel app={activeApp} minutes={minutes} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="catalogo">
+          <ApplicationsPanel
+            applications={applications}
+            lastScanAt={applicationsQuery.data?.lastScanAt ?? null}
+            isLoading={applicationsQuery.isLoading}
+            isError={applicationsQuery.isError}
+            canManage={applicationsQuery.data?.canManage ?? false}
+            selectedAppKey={activeKey}
+            onSelectApp={(key) => {
+              setSelectedKey(key)
+              setTab('servico')
+            }}
+            onRetry={() => applicationsQuery.refetch()}
+          />
         </TabsContent>
 
         <TabsContent value="projeto">
           <Suspense fallback={<Skeleton className="h-96 w-full" />}>
             <LandingPage
-              cluster={overview?.cluster}
+              cluster={overviewQuery.data?.cluster}
               applications={applications}
               enabledCount={enabledCount}
-              links={overview?.links}
+              links={overviewQuery.data?.links}
               onNavigate={setTab}
             />
           </Suspense>
         </TabsContent>
       </main>
 
-      <footer className="mx-auto max-w-7xl px-4 py-8 text-center text-xs text-muted-foreground sm:px-6 lg:px-8">
-        mcp-apis · Painel de Observabilidade · dados de Jaeger, Prometheus e Kubernetes
+      <footer className="mx-auto max-w-[90rem] px-4 py-8 text-center text-xs text-muted-foreground sm:px-6 lg:px-8">
+        mcp-apis · Health, dependências, anomalias, timeline e RCA · Prometheus, Jaeger, Loki e Kubernetes
       </footer>
     </Tabs>
   )

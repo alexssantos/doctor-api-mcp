@@ -14,7 +14,7 @@ interface Signal {
   title: string
   body: string
   tone: string
-  status: 'ativo' | 'em breve'
+  status: 'ativo'
 }
 
 const SIGNALS: Signal[] = [
@@ -30,7 +30,7 @@ const SIGNALS: Signal[] = [
     icon: Flame,
     source: 'Prometheus',
     title: 'Métricas',
-    body: 'Séries temporais por serviço — taxa de requisições, erros 5xx, memória. PromQL arbitrário liberado ao agente.',
+    body: 'RED, CPU e memória consultados por descritores internos limitados; o agente não envia PromQL arbitrário.',
     tone: 'text-chart-3',
     status: 'ativo',
   },
@@ -38,7 +38,7 @@ const SIGNALS: Signal[] = [
     icon: Boxes,
     source: 'Kubernetes',
     title: 'Estado do cluster',
-    body: 'Pods, deployments, restarts e prontidão lidos in-cluster via RBAC read-only.',
+    body: 'Pods, deployments, restarts, revisões e Events lidos in-cluster via RBAC e allowlist.',
     tone: 'text-chart-1',
     status: 'ativo',
   },
@@ -54,9 +54,9 @@ const SIGNALS: Signal[] = [
     icon: ScrollText,
     source: 'Loki',
     title: 'Logs',
-    body: 'Loki e Promtail já rodam no cluster, mas ainda não são lidos pelas ferramentas MCP.',
-    tone: 'text-muted-foreground',
-    status: 'em breve',
+    body: 'Padrões e fingerprints internos correlacionados à timeline, com redaction de segredos e PII.',
+    tone: 'text-chart-2',
+    status: 'ativo',
   },
 ]
 
@@ -177,19 +177,18 @@ export function SignalsSection() {
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         {SIGNALS.map((signal, i) => {
           const Icon = signal.icon
-          const soon = signal.status === 'em breve'
           return (
             <Reveal key={signal.title} delay={i * 60}>
-              <Card className={soon ? 'h-full border-dashed bg-muted/20' : 'h-full'}>
+              <Card className="h-full">
                 <CardContent className="flex h-full flex-col gap-2 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <Icon className={`size-5 ${signal.tone}`} />
-                    <Badge variant={soon ? 'outline' : 'success'} className="text-[10px]">
+                    <Badge variant="success" className="text-[10px]">
                       {signal.status}
                     </Badge>
                   </div>
                   <div>
-                    <p className={`text-sm font-semibold ${soon ? 'text-muted-foreground' : ''}`}>{signal.title}</p>
+                    <p className="text-sm font-semibold">{signal.title}</p>
                     <p className="font-mono text-[11px] text-muted-foreground">{signal.source}</p>
                   </div>
                   <p className="text-[11px] leading-relaxed text-muted-foreground">{signal.body}</p>
@@ -217,9 +216,8 @@ export function SignalsSection() {
             <div className="flex-1">
               <p className="text-sm font-semibold">Correlação no MCP Server</p>
               <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                <span className="font-mono">find_data_origin</span> junta rota, chamadas HTTP e queries SQL num
-                caminho só. <span className="font-mono">explain_api</span> cruza a spec com tráfego real. O agente
-                recebe a conclusão, não os dados brutos.
+                Health, Dependency, Anomaly, Correlation e RCA Engines trabalham sobre providers normalizados.
+                O agente recebe conclusão, evidências e limitações — nunca consultas raw ou causalidade inventada.
               </p>
             </div>
             <Activity className="hidden size-4 shrink-0 text-primary sm:block" />

@@ -7,7 +7,6 @@ import {
   FileJson,
   Lock,
   Network,
-  RotateCcw,
   Settings2,
   XCircle,
 } from 'lucide-react'
@@ -28,13 +27,16 @@ const SOURCE_META: Record<DiscoverySource, { label: string; icon: typeof Boxes }
 
 function healthStatus(app: DiscoveredApplication) {
   const health = app.health
-  if (!health || health.podCount === 0) {
-    return { label: 'Sem pods', variant: 'outline' as const, icon: AlertTriangle }
+  if (!health || health.healthStatus === 'unknown') {
+    return { label: 'Desconhecido', variant: 'outline' as const, icon: AlertTriangle }
   }
-  if (health.allReady) {
+  if (health.healthStatus === 'healthy') {
     return { label: 'Saudável', variant: 'success' as const, icon: CheckCircle2 }
   }
-  return { label: 'Degradado', variant: 'warning' as const, icon: XCircle }
+  if (health.healthStatus === 'critical') {
+    return { label: 'Crítico', variant: 'destructive' as const, icon: XCircle }
+  }
+  return { label: 'Degradado', variant: 'warning' as const, icon: AlertTriangle }
 }
 
 function minutesSince(iso: string) {
@@ -43,12 +45,14 @@ function minutesSince(iso: string) {
 
 export function ApplicationCard({
   app,
+  canManage,
   selected,
   onSelect,
   onToggle,
   isToggling,
 }: {
   app: DiscoveredApplication
+  canManage: boolean
   selected: boolean
   onSelect: () => void
   onToggle: (enabled: boolean) => void
@@ -56,7 +60,7 @@ export function ApplicationCard({
 }) {
   const status = healthStatus(app)
   const StatusIcon = status.icon
-  const restarts = app.health?.pods.reduce((sum, p) => sum + p.restarts, 0) ?? 0
+  const score = app.health?.score
 
   return (
     // The card itself is a plain container. Making it a `role="button"` while it
@@ -75,8 +79,8 @@ export function ApplicationCard({
             type="button"
             onClick={onSelect}
             aria-pressed={selected}
-            title={`Ver traces e métricas de ${app.name}`}
-            className="min-w-0 cursor-pointer truncate rounded font-mono text-sm hover:text-primary"
+            title={`Abrir inteligência de ${app.name}`}
+            className="inline-flex min-h-11 min-w-0 cursor-pointer items-center truncate rounded font-mono text-sm hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {app.name}
           </button>
@@ -86,15 +90,25 @@ export function ApplicationCard({
               <StatusIcon className="size-3" />
               {status.label}
             </Badge>
-            {app.lockedDisabled ? (
+            {app.lockedDisabled || !canManage ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex">
-                    <Switch checked={false} disabled aria-label={`Indexação de ${app.name} travada`} />
+                    <Switch
+                      checked={app.enabled}
+                      disabled
+                      aria-label={
+                        app.lockedDisabled
+                          ? `Indexação de ${app.name} travada`
+                          : `Indexação de ${app.name} disponível apenas para administradores`
+                      }
+                    />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Travado pela label mcp-apis/indexed=false no Service. Remova a label para liberar.
+                  {app.lockedDisabled
+                    ? 'Travado pela label mcp-apis/indexed=false no Service. Remova a label para liberar.'
+                    : 'Permissão administrativa necessária para alterar a indexação.'}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -112,6 +126,14 @@ export function ApplicationCard({
         <p className="truncate text-xs text-muted-foreground" title={app.baseUrl ?? undefined}>
           {app.baseUrl ?? 'sem endpoint HTTP (detectada apenas por traces)'}
         </p>
+
+        {(app.version || app.team || app.owner) && (
+          <p className="truncate text-[11px] text-muted-foreground">
+            {app.version ? `v${app.version}` : app.revision ? `rev. ${app.revision}` : ''}
+            {(app.version || app.revision) && (app.team || app.owner) ? ' · ' : ''}
+            {app.team ?? app.owner ?? ''}
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {app.sources.map((source) => {
@@ -151,15 +173,14 @@ export function ApplicationCard({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          {app.health && app.health.podCount > 0 && (
+          {app.desiredReplicas > 0 && (
             <Badge variant="outline" className="tabular">
-              {app.health.podCount} pod(s)
+              {app.readyReplicas}/{app.desiredReplicas} réplicas
             </Badge>
           )}
-          {restarts > 0 && (
-            <Badge variant="warning" className="tabular">
-              <RotateCcw className="size-3" />
-              {restarts} restart{restarts > 1 ? 's' : ''}
+          {score != null && (
+            <Badge variant="outline" className="tabular">
+              score {score.toFixed(0)} · cobertura {Math.round((app.health?.coverage ?? 0) * 100)}%
             </Badge>
           )}
           {app.missing && (

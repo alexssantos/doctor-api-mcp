@@ -9,7 +9,11 @@ const SOURCE_TONE: Record<string, string> = {
   Jaeger: 'text-chart-2',
   Prometheus: 'text-chart-3',
   OpenAPI: 'text-chart-4',
-  ApplicationCatalog: 'text-chart-5',
+  Catalog: 'text-chart-5',
+  Events: 'text-chart-1',
+  Loki: 'text-chart-2',
+  'Health Engine': 'text-primary',
+  'RCA Engine': 'text-chart-4',
 }
 
 export function ToolsGrid() {
@@ -18,8 +22,8 @@ export function ToolsGrid() {
       <SectionHeading
         id="ferramentas-heading"
         eyebrow="Ferramentas"
-        title="9 perguntas que o agente já sabe responder"
-        description="Cada ferramenta é uma consulta pronta sobre o cluster: o MCP busca nas fontes, correlaciona e devolve a análise — o modelo não precisa saber que Jaeger ou Prometheus existem."
+        title="8 tools vNext para investigação orientada por evidências"
+        description="Cada tool devolve um envelope versionado com janela, freshness, cobertura, fontes, evidências e limitações. As tools legadas seguem registradas apenas para compatibilidade."
       />
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

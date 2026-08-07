@@ -1,4 +1,4 @@
-import { ArrowDown, Bot, Boxes, Database, Flame, Server, Waypoints } from 'lucide-react'
+import { ArrowDown, Bot, Boxes, BrainCircuit, Database, Flame, ScrollText, Server, Waypoints } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -48,7 +48,7 @@ export function ArchitectureFlow() {
         id="arquitetura-heading"
         eyebrow="Arquitetura"
         title="Como o dado chega até o agente"
-        description="O MCP Server é um orquestrador sem banco próprio: ele agrega Kubernetes, Jaeger, Prometheus e as specs OpenAPI de cada serviço em respostas únicas."
+        description="O MCP Server normaliza Kubernetes, Prometheus, Jaeger, Loki e OpenAPI; engines determinísticos transformam sinais em envelopes explicáveis. O único estado próprio é administrativo e estreitamente controlado."
       />
 
       <Reveal delay={80} className="mt-6">
@@ -68,10 +68,12 @@ export function ArchitectureFlow() {
                 <Server className="size-4 text-primary" />
                 <p className="text-sm font-semibold">McpServer</p>
                 <Badge variant="outline">porta 4000</Badge>
-                <Badge variant="secondary">9 ferramentas</Badge>
+                <Badge variant="secondary">8 vNext · 8 compatíveis</Badge>
+                <Badge variant="success">raw queries desabilitadas</Badge>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Providers normalizados</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                 <FlowNode
                   icon={Boxes}
                   title="Kubernetes API"
@@ -87,19 +89,34 @@ export function ArchitectureFlow() {
                 <FlowNode
                   icon={Flame}
                   title="Prometheus"
-                  subtitle="métricas e PromQL"
+                  subtitle="RED e recursos limitados"
                   tone="bg-chart-3/15 text-chart-3"
                 />
                 <FlowNode
                   icon={Database}
                   title="OpenAPI"
-                  subtitle="rotas e schemas"
+                  subtitle="contratos resumidos"
                   tone="bg-chart-4/15 text-chart-4"
                 />
+                <FlowNode
+                  icon={ScrollText}
+                  title="Loki"
+                  subtitle="fingerprints com redaction"
+                  tone="bg-chart-2/15 text-chart-2"
+                />
+              </div>
+
+              <p className="mb-2 mt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Engines</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {['Health', 'Dependency', 'Anomaly', 'Correlation', 'RCA'].map((engine) => (
+                  <div key={engine} className="flex min-h-11 items-center gap-2 rounded-md border bg-background/60 px-2.5 text-xs font-medium">
+                    <BrainCircuit className="size-3.5 text-primary" aria-hidden="true" /> {engine}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <FlowArrow label="descoberta + coleta" />
+            <FlowArrow label="descoberta + coleta com allowlist" />
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <FlowNode

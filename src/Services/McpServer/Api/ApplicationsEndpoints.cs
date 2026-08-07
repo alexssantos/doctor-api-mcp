@@ -2,6 +2,10 @@ using McpApis.McpServer.Services;
 using McpApis.McpServer.Services.Contracts;
 using McpApis.McpServer.Tools;
 using McpApis.McpServer.Infrastructure.Security;
+using McpApis.McpServer.Domain.Contracts;
+using McpApis.McpServer.Engines.SystemHealth;
+using McpApis.McpServer.Infrastructure.Options;
+using Microsoft.Extensions.Options;
 
 namespace McpApis.McpServer.Api;
 
@@ -17,35 +21,31 @@ public static class ApplicationsEndpoints
     public static IEndpointRouteBuilder MapApplicationsApi(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/dashboard");
-        group.RequireAuthorization(ObservabilityPolicies.Admin)
-            .RequireRateLimiting(ObservabilityPolicies.RateLimit);
+        group.RequireRateLimiting(ObservabilityPolicies.RateLimit);
 
         group.MapGet("/applications", async (
             IApplicationCatalog catalog,
             IDiscoveryOrchestrator orchestrator,
-            IKubernetesCollector k8s,
-            IConfiguration config) =>
+            ISystemHealthEngine systemHealth,
+            IOptions<ObservabilityLimitsOptions> limits,
+            IConfiguration config,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
         {
             var rescanSeconds = int.TryParse(config["Discovery:RescanSeconds"], out var v) ? v : 60;
             var missingAfter = TimeSpan.FromSeconds(Math.Max(rescanSeconds, 30) * 2);
             var now = DateTimeOffset.UtcNow;
+            var window = TimeWindow.EndingAt(
+                now, TimeSpan.FromMinutes(limits.Value.DefaultWindowMinutes));
+            var system = await systemHealth.SummarizeAsync(window, cancellationToken);
+            var healthByKey = system.Data.Services.ToDictionary(
+                summary => summary.Service.Key,
+                StringComparer.OrdinalIgnoreCase);
 
             var applications = new List<object>();
             foreach (var a in catalog.GetAll())
             {
-                HealthStatus? health = null;
-                var appLabel = a.DeploymentName ?? a.KubernetesServiceName;
-                if (appLabel is not null)
-                {
-                    try
-                    {
-                        health = await k8s.GetHealthAsync(appLabel, a.Namespace);
-                    }
-                    catch
-                    {
-                        // Health is best-effort; the dashboard shows "unknown" when it fails.
-                    }
-                }
+                healthByKey.TryGetValue($"{a.Namespace}/{a.Name}", out var health);
 
                 applications.Add(new
                 {
@@ -56,6 +56,18 @@ public static class ApplicationsEndpoints
                     kubernetesServiceName = a.KubernetesServiceName,
                     otelServiceName = a.OtelServiceName,
                     baseUrl = a.BaseUrl,
+                    selector = a.Selector,
+                    image = a.Image,
+                    imageDigest = a.ImageDigest,
+                    version = a.Version,
+                    revision = a.Revision,
+                    desiredReplicas = a.DesiredReplicas,
+                    readyReplicas = a.ReadyReplicas,
+                    owner = a.Owner,
+                    team = a.Team,
+                    description = a.Description,
+                    coverage = a.Coverage,
+                    declaredDependencies = a.DeclaredDependencies,
                     hasReadyEndpoints = a.HasReadyEndpoints,
                     openApi = new
                     {
@@ -76,9 +88,13 @@ public static class ApplicationsEndpoints
             {
                 generatedAt = now,
                 lastScanAt = orchestrator.LastScanCompletedAt,
+                healthWindow = window,
+                sources = system.Sources,
+                warnings = system.Warnings,
+                canManage = httpContext.User.IsInRole(ObservabilityPolicies.Admin),
                 applications
             });
-        });
+        }).RequireAuthorization(ObservabilityPolicies.Reader);
 
         group.MapPut("/applications/{name}/indexing", async (
             string name,
@@ -121,13 +137,13 @@ public static class ApplicationsEndpoints
                 enabled = request.Enabled,
                 persisted
             });
-        });
+        }).RequireAuthorization(ObservabilityPolicies.Admin);
 
         group.MapPost("/discovery/rescan", (IDiscoveryOrchestrator orchestrator) =>
         {
             orchestrator.RequestRescan();
             return Results.Accepted(value: new { status = "scan-requested" });
-        });
+        }).RequireAuthorization(ObservabilityPolicies.Admin);
 
         return app;
     }

@@ -17,10 +17,10 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 rounded-md px-6',
-        icon: 'size-9',
+        default: 'h-11 px-4 py-2',
+        sm: 'h-11 rounded-md px-3 text-xs',
+        lg: 'h-12 rounded-md px-6',
+        icon: 'size-11',
       },
     },
     defaultVariants: {
@@ -42,4 +42,4 @@ function Button({
   return <Comp data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />
 }
 
-export { Button, buttonVariants }
+export { Button }

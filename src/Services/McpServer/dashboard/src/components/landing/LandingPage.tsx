@@ -57,17 +57,17 @@ export function LandingPage({
             Tudo o que o agente enxerga está a uma aba daqui
           </h3>
           <p className="mx-auto mt-2 max-w-xl text-pretty text-sm text-muted-foreground">
-            As mesmas fontes que respondem às ferramentas MCP alimentam os painéis de operação e
-            observabilidade deste dashboard.
+            Os mesmos engines e caches que respondem às tools MCP alimentam saúde, anomalias,
+            dependências, timeline e RCA neste dashboard.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
-            <Button onClick={() => onNavigate('operacao')}>
-              Abrir Operação
+            <Button onClick={() => onNavigate('catalogo')}>
+              Abrir catálogo
               <ArrowRight className="size-4" />
             </Button>
-            <Button variant="outline" onClick={() => onNavigate('observabilidade')}>
+            <Button variant="outline" onClick={() => onNavigate('servico')}>
               <Waypoints className="size-4" />
-              Ver traces e métricas
+              Analisar serviço
             </Button>
           </div>
         </section>

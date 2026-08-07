@@ -1,8 +1,10 @@
-import type { ClusterSummary, DashboardLinks, DiscoveredApplication } from '@/lib/api'
-
-// Dados de demonstração para o build estático da landing page (GitHub Pages).
-// Não refletem um cluster real — servem só para o hero, o radar e as seções
-// seguintes terem algo para renderizar sem depender do backend.
+import type {
+  ClusterSummary,
+  DashboardLinks,
+  DiscoveredApplication,
+  HealthState,
+  ServiceHealthSummary,
+} from '@/lib/api'
 
 export const mockCluster: ClusterSummary = {
   totalPods: 18,
@@ -11,145 +13,141 @@ export const mockCluster: ClusterSummary = {
   readyDeployments: 6,
 }
 
+function mockHealth(name: string, state: HealthState, score: number): ServiceHealthSummary {
+  return {
+    service: {
+      serviceName: name,
+      namespace: 'mcp-apis',
+      deploymentName: name,
+      kubernetesServiceName: name,
+      otelServiceName: name,
+      metricsId: name,
+      aliases: [name],
+    },
+    healthStatus: state,
+    score,
+    coverage: 1,
+    criticalFindings: state === 'critical' ? 1 : 0,
+    evaluatedAt: '2026-08-05T09:00:00Z',
+  }
+}
+
+function mockApplication(
+  input: Pick<DiscoveredApplication, 'name' | 'sources'> & Partial<DiscoveredApplication>,
+): DiscoveredApplication {
+  const { name, sources, ...overrides } = input
+  return {
+    name,
+    namespace: 'mcp-apis',
+    sources,
+    deploymentName: name,
+    kubernetesServiceName: name,
+    otelServiceName: name,
+    baseUrl: `http://${name}.mcp-apis.svc:8080`,
+    selector: { app: name },
+    image: `${name}:1.4.0`,
+    imageDigest: null,
+    version: '1.4.0',
+    revision: '4',
+    desiredReplicas: 2,
+    readyReplicas: 2,
+    owner: 'platform',
+    team: 'core-services',
+    description: null,
+    coverage: {
+      kubernetes: 'available',
+      metrics: 'available',
+      traces: 'available',
+      logs: 'available',
+      openApi: 'available',
+      events: 'available',
+    },
+    declaredDependencies: [],
+    hasReadyEndpoints: true,
+    openApi: { validated: true, path: '/swagger/v1/swagger.json', failures: [] },
+    enabled: true,
+    lockedDisabled: false,
+    firstSeen: '2026-06-02T10:00:00Z',
+    lastSeen: '2026-08-05T09:00:00Z',
+    missing: false,
+    health: mockHealth(name, 'healthy', 96),
+    ...overrides,
+  }
+}
+
 export const mockApplications: DiscoveredApplication[] = [
-  {
+  mockApplication({
     name: 'catalog-api',
-    namespace: 'mcp-apis',
     sources: ['deployment', 'network', 'otel'],
-    deploymentName: 'catalog-api',
-    kubernetesServiceName: 'catalog-api',
-    otelServiceName: 'catalog-api',
-    baseUrl: 'http://catalog-api.mcp-apis.svc:8080',
-    hasReadyEndpoints: true,
-    openApi: { validated: true, path: '/swagger/v1/swagger.json', failures: [] },
-    enabled: true,
-    lockedDisabled: false,
-    firstSeen: '2026-06-02T10:00:00Z',
-    lastSeen: '2026-08-05T09:00:00Z',
-    missing: false,
-    health: {
-      service: 'catalog-api',
-      podCount: 3,
-      allReady: true,
-      pods: [
-        { name: 'catalog-api-6f8-abc', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'catalog-api-6f8-def', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'catalog-api-6f8-ghi', phase: 'Running', ready: true, restarts: 1, containerStates: ['running'] },
-      ],
-    },
-  },
-  {
+    desiredReplicas: 3,
+    readyReplicas: 3,
+  }),
+  mockApplication({
     name: 'orders-api',
-    namespace: 'mcp-apis',
     sources: ['deployment', 'network', 'otel', 'config'],
-    deploymentName: 'orders-api',
-    kubernetesServiceName: 'orders-api',
-    otelServiceName: 'orders-api',
-    baseUrl: 'http://orders-api.mcp-apis.svc:8080',
-    hasReadyEndpoints: true,
-    openApi: { validated: true, path: '/swagger/v1/swagger.json', failures: [] },
-    enabled: true,
-    lockedDisabled: false,
-    firstSeen: '2026-06-02T10:00:00Z',
-    lastSeen: '2026-08-05T09:00:00Z',
-    missing: false,
-    health: {
-      service: 'orders-api',
-      podCount: 2,
-      allReady: false,
-      pods: [
-        { name: 'orders-api-9a1-abc', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'orders-api-9a1-def', phase: 'CrashLoopBackOff', ready: false, restarts: 4, containerStates: ['waiting'] },
-      ],
-    },
-  },
-  {
+    readyReplicas: 1,
+    health: mockHealth('orders-api', 'critical', 42),
+    declaredDependencies: ['payments-api'],
+  }),
+  mockApplication({
     name: 'payments-api',
-    namespace: 'mcp-apis',
     sources: ['deployment', 'otel'],
-    deploymentName: 'payments-api',
-    kubernetesServiceName: 'payments-api',
-    otelServiceName: 'payments-api',
-    baseUrl: 'http://payments-api.mcp-apis.svc:8080',
-    hasReadyEndpoints: true,
-    openApi: { validated: false, path: '/swagger/v1/swagger.json', failures: ['Falha ao validar $ref de PaymentIntent'] },
     enabled: false,
-    lockedDisabled: false,
-    firstSeen: '2026-06-10T10:00:00Z',
-    lastSeen: '2026-08-05T09:00:00Z',
-    missing: false,
-    health: {
-      service: 'payments-api',
-      podCount: 2,
-      allReady: true,
-      pods: [
-        { name: 'payments-api-2b3-abc', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'payments-api-2b3-def', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-      ],
+    openApi: {
+      validated: false,
+      path: '/swagger/v1/swagger.json',
+      failures: ['Falha ao validar $ref de PaymentIntent'],
     },
-  },
-  {
+    coverage: {
+      kubernetes: 'available',
+      metrics: 'unavailable',
+      traces: 'available',
+      logs: 'unavailable',
+      openApi: 'unavailable',
+      events: 'available',
+    },
+  }),
+  mockApplication({
     name: 'notifications-worker',
-    namespace: 'mcp-apis',
     sources: ['otel'],
     deploymentName: null,
     kubernetesServiceName: null,
-    otelServiceName: 'notifications-worker',
     baseUrl: null,
+    selector: {},
+    image: null,
+    version: null,
+    revision: null,
+    desiredReplicas: 0,
+    readyReplicas: 0,
     hasReadyEndpoints: false,
     openApi: { validated: false, path: null, failures: [] },
-    enabled: true,
-    lockedDisabled: false,
-    firstSeen: '2026-07-01T10:00:00Z',
-    lastSeen: '2026-08-05T09:00:00Z',
-    missing: false,
     health: null,
-  },
-  {
+  }),
+  mockApplication({
     name: 'gateway',
-    namespace: 'mcp-apis',
     sources: ['deployment', 'network', 'otel', 'config'],
-    deploymentName: 'gateway',
-    kubernetesServiceName: 'gateway',
-    otelServiceName: 'gateway',
-    baseUrl: 'http://gateway.mcp-apis.svc:8080',
-    hasReadyEndpoints: true,
-    openApi: { validated: true, path: '/swagger/v1/swagger.json', failures: [] },
-    enabled: true,
     lockedDisabled: true,
-    firstSeen: '2026-05-20T10:00:00Z',
-    lastSeen: '2026-08-05T09:00:00Z',
-    missing: false,
-    health: {
-      service: 'gateway',
-      podCount: 3,
-      allReady: true,
-      pods: [
-        { name: 'gateway-4c5-abc', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'gateway-4c5-def', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-        { name: 'gateway-4c5-ghi', phase: 'Running', ready: true, restarts: 0, containerStates: ['running'] },
-      ],
-    },
-  },
-  {
+    desiredReplicas: 3,
+    readyReplicas: 3,
+  }),
+  mockApplication({
     name: 'legacy-billing',
-    namespace: 'mcp-apis',
     sources: ['network'],
     deploymentName: null,
-    kubernetesServiceName: 'legacy-billing',
     otelServiceName: null,
     baseUrl: null,
+    image: null,
+    version: null,
+    revision: null,
+    desiredReplicas: 0,
+    readyReplicas: 0,
+    enabled: false,
     hasReadyEndpoints: false,
     openApi: { validated: false, path: null, failures: [] },
-    enabled: false,
-    lockedDisabled: false,
-    firstSeen: '2026-04-15T10:00:00Z',
-    lastSeen: '2026-08-04T18:00:00Z',
     missing: true,
     health: null,
-  },
+  }),
 ]
 
-export const mockEnabledCount = mockApplications.filter((app) => app.enabled).length
-
+export const mockEnabledCount = mockApplications.filter((application) => application.enabled).length
 export const mockLinks: DashboardLinks = {}

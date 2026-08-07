@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApplicationCard } from '@/components/dashboard/ApplicationCard'
-import { useRescanDiscovery, useSetIndexing } from '@/lib/api'
+import { applicationKey, useRescanDiscovery, useSetIndexing } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DiscoveredApplication } from '@/lib/api'
 
@@ -21,7 +21,7 @@ function matchesStatus(app: DiscoveredApplication, filter: StatusFilter) {
     case 'desabilitadas':
       return !app.enabled
     case 'degradadas':
-      return !app.health || app.health.podCount === 0 || !app.health.allReady
+      return !app.health || app.health.healthStatus !== 'healthy'
     default:
       return true
   }
@@ -32,7 +32,8 @@ export function ApplicationsPanel({
   lastScanAt,
   isLoading,
   isError,
-  selectedApp,
+  canManage,
+  selectedAppKey,
   onSelectApp,
   onRetry,
 }: {
@@ -40,8 +41,9 @@ export function ApplicationsPanel({
   lastScanAt: string | null
   isLoading: boolean
   isError: boolean
-  selectedApp?: string
-  onSelectApp: (name: string) => void
+  canManage: boolean
+  selectedAppKey?: string
+  onSelectApp: (key: string) => void
   onRetry: () => void
 }) {
   const setIndexing = useSetIndexing()
@@ -84,8 +86,14 @@ export function ApplicationsPanel({
             variant="outline"
             size="sm"
             onClick={() => rescan.mutate()}
-            disabled={rescan.isPending}
-            title={lastScanAt ? `Último scan: ${new Date(lastScanAt).toLocaleTimeString('pt-BR')}` : undefined}
+            disabled={!canManage || rescan.isPending}
+            title={
+              !canManage
+                ? 'Permissão administrativa necessária para executar um re-scan.'
+                : lastScanAt
+                  ? `Último scan: ${new Date(lastScanAt).toLocaleTimeString('pt-BR')}`
+                  : undefined
+            }
           >
             <RefreshCw className={cn('size-3.5', rescan.isPending && 'animate-spin')} />
             Re-scan
@@ -140,7 +148,9 @@ export function ApplicationsPanel({
             icon={Telescope}
             title="Nenhuma aplicação descoberta ainda"
             description="A descoberta varre deployments, rede e traces OTel. Confirme a configuração de Discovery e o RBAC do cluster, ou force uma nova varredura."
-            action={{ label: 'Rodar re-scan', onClick: () => rescan.mutate(), isPending: rescan.isPending }}
+            action={canManage
+              ? { label: 'Rodar re-scan', onClick: () => rescan.mutate(), isPending: rescan.isPending }
+              : undefined}
           />
         )}
 
@@ -163,12 +173,17 @@ export function ApplicationsPanel({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((app) => (
               <ApplicationCard
-                key={app.name}
+                key={applicationKey(app)}
                 app={app}
-                selected={app.name === selectedApp}
-                onSelect={() => onSelectApp(app.name)}
-                onToggle={(enabled) => setIndexing.mutate({ name: app.name, enabled })}
-                isToggling={setIndexing.isPending && setIndexing.variables?.name === app.name}
+                canManage={canManage}
+                selected={applicationKey(app) === selectedAppKey}
+                onSelect={() => onSelectApp(applicationKey(app))}
+                onToggle={(enabled) => setIndexing.mutate({ name: app.name, namespace: app.namespace, enabled })}
+                isToggling={!canManage || (
+                  setIndexing.isPending &&
+                  setIndexing.variables?.name === app.name &&
+                  setIndexing.variables.namespace === app.namespace
+                )}
               />
             ))}
           </div>

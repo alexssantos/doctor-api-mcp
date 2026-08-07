@@ -39,7 +39,7 @@ function depthFor(app: DiscoveredApplication) {
 
 function toneFor(app: DiscoveredApplication): Blip['tone'] {
   if (!app.enabled || app.missing) return 'idle'
-  if (app.health?.allReady) return 'ok'
+  if (app.health?.healthStatus === 'healthy') return 'ok'
   return 'warn'
 }
 
@@ -221,8 +221,8 @@ export function RadarLegend({ applications }: { applications: DiscoveredApplicat
   ]
 
   const health = [
-    { label: 'Saudável', tone: 'bg-success', value: applications.filter((a) => a.enabled && !a.missing && a.health?.allReady).length },
-    { label: 'Degradada', tone: 'bg-warning', value: applications.filter((a) => a.enabled && !a.missing && !a.health?.allReady).length },
+    { label: 'Saudável', tone: 'bg-success', value: applications.filter((a) => a.enabled && !a.missing && a.health?.healthStatus === 'healthy').length },
+    { label: 'Degradada ou crítica', tone: 'bg-warning', value: applications.filter((a) => a.enabled && !a.missing && ['degraded', 'critical'].includes(a.health?.healthStatus ?? '')).length },
     { label: 'Não indexada', tone: 'bg-muted-foreground', value: applications.filter((a) => !a.enabled || a.missing).length },
   ]
 

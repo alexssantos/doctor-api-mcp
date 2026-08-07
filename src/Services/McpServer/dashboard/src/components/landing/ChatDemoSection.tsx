@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowRight, Bot, User } from 'lucide-react'
 
@@ -18,59 +18,58 @@ interface ChatExample {
 /** Scripted, but grounded in the real tool names/queries — not a live agent call. */
 const EXAMPLES: ChatExample[] = [
   {
-    tool: 'get_health',
+    tool: 'service_get_health',
     question: 'A ProdutoAPI está saudável?',
     answer: (
       <div className="space-y-2.5">
         <p className="leading-relaxed">
-          <strong className="font-semibold text-success-fg">Saudável.</strong> 2 de 2 pods prontos e
-          zero restarts na última hora.
+          <strong className="font-semibold text-warning-fg">Degradada, score 72.</strong> Os pods estão
+          prontos, mas o P95 subiu 38% na janela de 30 minutos.
         </p>
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="success">2/2 prontos</Badge>
-          <Badge variant="outline">0 restarts</Badge>
-          <Badge variant="outline" className="font-mono text-[10px]">
-            deployment/produtoapi
-          </Badge>
+          <Badge variant="warning">P95 +38%</Badge>
+          <Badge variant="outline">cobertura 92%</Badge>
         </div>
       </div>
     ),
   },
   {
-    tool: 'find_data_origin',
-    question: 'De onde vem o preço da rota /api/products/{id}?',
+    tool: 'service_get_incident_timeline',
+    question: 'O que aconteceu depois do deploy da PrecoAPI?',
     answer: (
       <div className="space-y-2.5">
-        <p className="leading-relaxed">A origem é uma chamada encadeada até o Postgres:</p>
+        <p className="leading-relaxed">A timeline correlacionou três eventos sem duplicatas:</p>
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="outline" className="font-mono text-[10px]">
-            ProdutoAPI
+            14:08 deploy rev.17
           </Badge>
           <ArrowRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <Badge variant="outline" className="font-mono text-[10px]">
-            PrecoAPI
+          <Badge variant="warning" className="font-mono text-[10px]">
+            14:12 P95 anômalo
           </Badge>
           <ArrowRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <Badge variant="outline" className="font-mono text-[10px]">
-            preco_db
+          <Badge variant="destructive" className="font-mono text-[10px]">
+            14:14 erros 5xx
           </Badge>
         </div>
       </div>
     ),
   },
   {
-    tool: 'query_metrics',
-    question: 'Tem erro 5xx na PrecoAPI nos últimos 5 minutos?',
+    tool: 'service_find_root_cause',
+    question: 'Qual é a causa raiz mais provável?',
     answer: (
       <div className="space-y-2.5">
         <p className="leading-relaxed">
-          <strong className="font-semibold text-success-fg">Nenhum.</strong> A consulta não retornou
-          amostras no intervalo:
+          <strong className="font-semibold text-warning-fg">Hipótese principal, confiança 86%:</strong>{' '}
+          regressão introduzida pela revisão 17.
         </p>
-        <pre className="overflow-x-auto rounded-md bg-muted/60 px-2.5 py-2 font-mono text-[10px] leading-relaxed">
-          <code>{'sum(rate(..._count{service="precoapi", ...status_code=~"5.."}[5m]))'}</code>
-        </pre>
-        <Badge variant="success">0 erros</Badge>
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="outline">3 evidências favoráveis</Badge>
+          <Badge variant="outline">0 contrárias</Badge>
+          <Badge variant="secondary">recomendação somente leitura</Badge>
+        </div>
       </div>
     ),
   },
@@ -99,16 +98,16 @@ export function ChatDemoSection() {
   const tool = MCP_TOOLS.find((t) => t.name === example.tool)
   const ToolIcon = tool?.icon
 
-  // Resets the typewriter whenever the example changes (auto-advance or manual pick).
-  useEffect(() => {
+  const selectExample = useCallback((nextIndex: number) => {
+    setIndex(nextIndex)
     if (reducedMotion) {
       setPhase('answered')
-      setTypedLength(EXAMPLES[index].question.length)
+      setTypedLength(EXAMPLES[nextIndex].question.length)
       return
     }
     setTypedLength(0)
     setPhase('typing')
-  }, [index, reducedMotion])
+  }, [reducedMotion])
 
   // Types the question one character at a time, then hands off to "thinking".
   useEffect(() => {
@@ -131,9 +130,9 @@ export function ChatDemoSection() {
   // Holds the answer on screen, then cycles to the next use case.
   useEffect(() => {
     if (reducedMotion || phase !== 'answered') return
-    const t = setTimeout(() => setIndex((i) => (i + 1) % EXAMPLES.length), HOLD_MS)
+    const t = setTimeout(() => selectExample((index + 1) % EXAMPLES.length), HOLD_MS)
     return () => clearTimeout(t)
-  }, [phase, reducedMotion])
+  }, [index, phase, reducedMotion, selectExample])
 
   return (
     <section aria-labelledby="chat-heading">
@@ -204,19 +203,26 @@ export function ChatDemoSection() {
             )}
           </CardContent>
 
-          <div className="flex items-center justify-center gap-1.5 border-t border-border py-2.5">
+          <div className="flex items-center justify-center border-t border-border py-1">
             {EXAMPLES.map((ex, i) => (
               <button
                 key={ex.tool}
                 type="button"
-                onClick={() => setIndex(i)}
+                onClick={() => selectExample(i)}
                 aria-label={`Ver exemplo: ${ex.question}`}
                 aria-current={i === index}
                 className={cn(
-                  'h-1.5 cursor-pointer rounded-full transition-all',
-                  i === index ? 'w-5 bg-primary' : 'w-1.5 bg-border hover:bg-muted-foreground/40',
+                  'group inline-flex size-11 cursor-pointer items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
                 )}
-              />
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-1.5 rounded-full transition-all',
+                    i === index ? 'w-5 bg-primary' : 'w-1.5 bg-border group-hover:bg-muted-foreground/40',
+                  )}
+                />
+              </button>
             ))}
           </div>
         </Card>

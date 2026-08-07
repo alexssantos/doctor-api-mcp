@@ -11,7 +11,7 @@ const STEPS = [
   {
     icon: Terminal,
     title: 'Suba o cluster',
-    body: 'tilt up levanta k3d, as APIs, a stack de observabilidade e o MCP Server.',
+    body: '.\\infra\\scripts\\ps\\up-k8s.ps1 -Build valida o WSL, sobe o k3d, importa as imagens e executa health checks.',
   },
   {
     icon: FileCode2,
@@ -21,7 +21,7 @@ const STEPS = [
   {
     icon: Plug,
     title: 'Pergunte ao agente',
-    body: '“Quais rotas a ProdutoAPI expõe?” ou “De onde vem o preço nesse endpoint?”',
+    body: '“Qual a saúde da ProdutoAPI?” ou “Encontre a causa raiz da regressão após o último deploy.”',
   },
 ]
 

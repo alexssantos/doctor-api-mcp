@@ -24,12 +24,12 @@ const STACK: StackItem[] = [
 ]
 
 const TECH = [
-  '.NET 9',
+  '.NET 10',
   'ASP.NET Minimal APIs',
   'MCP C# SDK',
   'Kubernetes (k3d)',
   'Helm',
-  'Tilt',
+  'WSL 2 + k3d',
   'OpenTelemetry',
   'PostgreSQL',
   'React 19',

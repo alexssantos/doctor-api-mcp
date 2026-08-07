@@ -117,13 +117,13 @@ export function Hero({
           >
             O <strong className="font-semibold text-foreground">mcp-apis</strong> varre o cluster sozinho,
             encontra cada aplicação e correlaciona <strong className="font-medium text-foreground">traces</strong>,{' '}
-            <strong className="font-medium text-foreground">métricas</strong> e{' '}
-            <strong className="font-medium text-foreground">estado dos pods</strong> em respostas únicas. O agente
-            pergunta em linguagem natural e recebe status e análise — não um dump de dados para interpretar.
+            <strong className="font-medium text-foreground">métricas</strong>, logs, deploys e{' '}
+            <strong className="font-medium text-foreground">estado do Kubernetes</strong>. O agente recebe uma
+            conclusão determinística com evidências, freshness, cobertura e limitações — não um dump para interpretar.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3 opacity-0" data-hero-item>
-            <Button onClick={() => onNavigate('operacao')}>
+            <Button onClick={() => onNavigate('catalogo')}>
               Ver o radar em operação
               <ArrowRight className="size-4" />
             </Button>
@@ -147,7 +147,7 @@ export function Hero({
             <LiveStat value={applications.length} label="aplicações no radar" />
             <LiveStat value={enabledCount} label="indexadas para o MCP" />
             <LiveStat value={podsPct} suffix="%" label="pods prontos" />
-            <LiveStat value={9} label="ferramentas MCP" />
+            <LiveStat value={8} label="tools vNext" />
           </div>
         </div>
 

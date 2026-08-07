@@ -2,7 +2,8 @@ namespace McpApis.McpServer.Services.Contracts;
 
 /// <summary>
 /// Collects live metrics from Prometheus via its HTTP query API.
-/// Used both by the "query_metrics" MCP tool and by the dashboard metrics panel.
+/// Low-level collector used by the feature-gated raw administrative surface and
+/// by normalized providers whose query descriptors are controlled server-side.
 /// </summary>
 public interface IPrometheusCollector
 {
