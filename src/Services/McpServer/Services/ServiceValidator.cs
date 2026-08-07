@@ -1,5 +1,6 @@
 using System.Text.Json;
 using McpApis.McpServer.Services.Contracts;
+using McpApis.McpServer.Infrastructure.Security;
 
 namespace McpApis.McpServer.Services;
 
@@ -19,24 +20,39 @@ public class ServiceValidator : IServiceValidator
     private readonly HttpClient _http;
     private readonly ILogger<ServiceValidator> _logger;
     private readonly string[] _openApiPaths;
+    private readonly IServiceUrlPolicy _urlPolicy;
 
-    public ServiceValidator(HttpClient http, IConfiguration config, ILogger<ServiceValidator> logger)
+    public ServiceValidator(
+        HttpClient http,
+        IConfiguration config,
+        ILogger<ServiceValidator> logger,
+        IServiceUrlPolicy urlPolicy)
     {
         _http = http;
         _logger = logger;
+        _urlPolicy = urlPolicy;
         _openApiPaths = config.GetSection("DataSources:OpenApiSpecPaths").Get<string[]>()
             ?? DefaultOpenApiPaths;
     }
 
-    public async Task<ServiceValidationResult> ValidateAsync(string serviceName, string baseUrl)
+    public async Task<ServiceValidationResult> ValidateAsync(
+        string serviceName,
+        string baseUrl,
+        string? namespaceName = null,
+        CancellationToken cancellationToken = default)
     {
         var failures = new List<string>();
-        var trimmed = baseUrl.TrimEnd('/');
+        if (!_urlPolicy.TryValidate(baseUrl, namespaceName, out var safeUri, out var policyError))
+        {
+            failures.Add($"Service URL rejected: {policyError}");
+            return Fail(serviceName, baseUrl, failures);
+        }
+        var trimmed = safeUri.ToString().TrimEnd('/');
 
-        if (!await IsReachableAsync(trimmed, failures))
+        if (!await IsReachableAsync(trimmed, failures, cancellationToken))
             return Fail(serviceName, baseUrl, failures);
 
-        var (spec, resolvedPath) = await ProbeOpenApiAsync(trimmed, failures);
+        var (spec, resolvedPath) = await ProbeOpenApiAsync(trimmed, failures, cancellationToken);
         if (spec is null)
             return Fail(serviceName, baseUrl, failures);
 
@@ -46,24 +62,27 @@ public class ServiceValidator : IServiceValidator
             serviceName, baseUrl, resolvedPath!, failures.Count == 0, failures);
     }
 
-    private async Task<bool> IsReachableAsync(string baseUrl, List<string> failures)
+    private async Task<bool> IsReachableAsync(
+        string baseUrl,
+        List<string> failures,
+        CancellationToken cancellationToken)
     {
         foreach (var path in new[] { "/health", "/" })
         {
             try
             {
-                var response = await _http.GetAsync(baseUrl + path);
+                using var response = await _http.GetAsync(baseUrl + path, cancellationToken);
                 if ((int)response.StatusCode < 500)
                     return true;
 
                 failures.Add($"Service returned HTTP {(int)response.StatusCode} on {path}");
                 return false;
             }
-            catch (Exception ex) when (path == "/health")
+            catch (Exception ex) when (ex is not OperationCanceledException && path == "/health")
             {
                 _logger.LogDebug(ex, "Health probe failed for {BaseUrl}, trying root", baseUrl);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 failures.Add($"Service unreachable: {ex.Message}");
                 return false;
@@ -74,7 +93,9 @@ public class ServiceValidator : IServiceValidator
     }
 
     private async Task<(string? spec, string? resolvedPath)> ProbeOpenApiAsync(
-        string baseUrl, List<string> failures)
+        string baseUrl,
+        List<string> failures,
+        CancellationToken cancellationToken)
     {
         var tried = new List<string>();
 
@@ -82,17 +103,17 @@ public class ServiceValidator : IServiceValidator
         {
             try
             {
-                var response = await _http.GetAsync(baseUrl + path);
+                using var response = await _http.GetAsync(baseUrl + path, cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     _logger.LogDebug(
                         "OpenAPI spec found at {BaseUrl}{Path}", baseUrl, path);
-                    return (await response.Content.ReadAsStringAsync(), path);
+                    return (await response.Content.ReadAsStringAsync(cancellationToken), path);
                 }
 
                 tried.Add($"{path} → HTTP {(int)response.StatusCode}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 tried.Add($"{path} → {ex.Message}");
             }

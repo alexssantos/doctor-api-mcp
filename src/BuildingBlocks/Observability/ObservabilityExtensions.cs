@@ -21,14 +21,20 @@ public static class ObservabilityExtensions
 
         services.AddMetricsTelemetry(serviceName);
 
-        if (captureBody)
+        services.AddSingleton<IBodyCaptureOptions>(new BodyCaptureOptions
         {
-            services.AddSingleton<IBodyCaptureOptions>(new BodyCaptureOptions { Enabled = true });
-        }
-        else
-        {
-            services.AddSingleton<IBodyCaptureOptions>(new BodyCaptureOptions { Enabled = false });
-        }
+            Enabled = captureBody,
+            MaxBodyBytes = Math.Clamp(configuration.GetValue("Otel:MaxCapturedBodyBytes", 16_384), 1024, 1_048_576),
+            AllowedContentTypes = new HashSet<string>(
+                configuration.GetSection("Otel:AllowedBodyContentTypes").Get<string[]>() ??
+                ["application/json", "application/problem+json"],
+                StringComparer.OrdinalIgnoreCase),
+            SensitiveFields = new HashSet<string>(
+                configuration.GetSection("Otel:SensitiveFields").Get<string[]>() ??
+                ["password", "secret", "token", "access_token", "refresh_token", "apiKey", "api_key",
+                 "authorization", "cookie", "set-cookie", "connectionString"],
+                StringComparer.OrdinalIgnoreCase)
+        });
 
         return services;
     }
@@ -44,6 +50,7 @@ public static class ObservabilityExtensions
             {
                 tracing
                     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
+                    .AddSource("McpApis.ObservabilityIntelligence")
                     .AddAspNetCoreInstrumentation(opts =>
                     {
                         opts.RecordException = true;
@@ -77,6 +84,7 @@ public static class ObservabilityExtensions
             {
                 metrics
                     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
+                    .AddMeter("McpApis.ObservabilityIntelligence")
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
