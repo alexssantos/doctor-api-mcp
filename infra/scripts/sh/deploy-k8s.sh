@@ -6,7 +6,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../." && pwd)"
 CLUSTER_NAME="mcp-apis"
 NAMESPACE="mcp-apis"
+K3S_IMAGE="rancher/k3s:v1.36.1-k3s1"
 CAPTURE_BODY="false"
+RELEASE_BLOCKER=false
 
 # ─── Parse args ────────────────────────────────────────────────────────────────
 for arg in "$@"; do
@@ -32,23 +34,38 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -q "^${CL
 else
   echo ">>> Creating k3d cluster '${CLUSTER_NAME}'..."
   k3d cluster create "${CLUSTER_NAME}" \
+    --image "${K3S_IMAGE}" \
     --port "8080:80@loadbalancer" \
     --port "8443:443@loadbalancer" \
-    --k3s-arg "--disable=traefik@server:0"
+    --k3s-arg "--prefer-bundled-bin@server:0"
 fi
 
 kubectl config use-context "k3d-${CLUSTER_NAME}"
 
-# ─── Nginx ingress controller ──────────────────────────────────────────────────
-echo "[NET] Installing nginx ingress controller..."
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+SERVER_VERSION="$(kubectl get node -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || true)"
+if [[ "$SERVER_VERSION" =~ ^v1\.([0-9]+) ]] && (( BASH_REMATCH[1] < 36 )); then
+  RELEASE_BLOCKER=true
+  echo "[WARN] Cluster existing uses Kubernetes ${SERVER_VERSION}; NetworkPolicy was validated only on K3s 1.36.1+."
+  echo "[WARN] Preserve data and recreate the cluster before the Phase 7 release gate."
+elif [[ ! "$SERVER_VERSION" =~ ^v[0-9]+\.[0-9]+ ]]; then
+  RELEASE_BLOCKER=true
+  echo "[WARN] Could not identify the Kubernetes version; validate NetworkPolicy before release."
+else
+  echo "[OK]  Kubernetes version compatible with the NetworkPolicy gate: ${SERVER_VERSION}"
+fi
 
-echo "... Waiting for ingress controller to be ready..."
-kubectl wait \
-  --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=180s
+# ─── K3s built-in Traefik ──────────────────────────────────────────────────────
+echo "[NET] Waiting for the K3s built-in Traefik controller..."
+if ! kubectl get deployment traefik -n kube-system >/dev/null 2>&1; then
+  if kubectl get deployment ingress-nginx-controller -n ingress-nginx >/dev/null 2>&1; then
+    echo "[FAIL] This legacy cluster was created with Traefik disabled. Preserve its data and recreate it; current manifests no longer use Ingress-NGINX."
+    exit 1
+  fi
+  kubectl wait --for=create deployment/traefik -n kube-system --timeout=180s
+fi
+kubectl wait --for=condition=Available deployment/traefik -n kube-system --timeout=180s
+TRAEFIK_IMAGE="$(kubectl get deployment traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}')"
+echo "[OK]  K3s built-in Traefik ready: ${TRAEFIK_IMAGE}"
 
 # ─── Build + load Docker images ────────────────────────────────────────────────
 echo "[IMG] Building Docker images..."
@@ -82,9 +99,14 @@ kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/prometheus/"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/loki/"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/promtail/"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/observabilidade/grafana/"
-kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/mcpserver/"
+kubectl apply -k "${REPO_ROOT}/infra/k8s/overlays/k3d/"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/precoapi/"
 kubectl apply -f "${REPO_ROOT}/infra/k8s/aplicacao/produtoapi/"
+
+# Importing a :latest image does not replace containers that are already
+# running. Restart all local application deployments so this run validates the
+# images built immediately above.
+kubectl rollout restart deployment/precoapi deployment/produtoapi deployment/mcpserver -n "${NAMESPACE}"
 
 if [[ "$CAPTURE_BODY" == "true" ]]; then
   kubectl patch configmap precoapi-config   -n "${NAMESPACE}" --type merge -p '{"data":{"Otel__CaptureBody":"true"}}'
@@ -105,11 +127,17 @@ kubectl rollout status deployment/precoapi          -n "${NAMESPACE}" --timeout=
 kubectl rollout status deployment/produtoapi        -n "${NAMESPACE}" --timeout=120s
 
 # ─── Done ──────────────────────────────────────────────────────────────────────
+if $RELEASE_BLOCKER; then
+  PHASE7_DEPLOY_MESSAGE="[WARN] Deploy operational, but the Phase 7 release gate is BLOCKED by the Kubernetes runtime."
+else
+  PHASE7_DEPLOY_MESSAGE="[OK]  Deploy complete. Run validate-phase7.sh before treating it as release-ready."
+fi
+
 cat <<EOF
 
-[OK]  Deploy complete!
+${PHASE7_DEPLOY_MESSAGE}
 
-� Run the port-forward script to access the services (no hosts file needed):
+Run the port-forward script to access the services (no hosts file needed):
    bash infra/scripts/sh/port-forward.sh
 
    Then open:
@@ -119,7 +147,7 @@ cat <<EOF
    ProdutoAPI → http://localhost:5002/scalar/v1
    Jaeger     → http://localhost:16686
    Prometheus → http://localhost:9090
-   Grafana    → http://localhost:3000  (admin/admin)
-   MCP Server → http://localhost:4000/sse  (SSE transport)
+   Grafana    → http://localhost:3000  (credential stored in the local Secret)
+   MCP Server → http://localhost:4000/  (Streamable HTTP)
 
 EOF

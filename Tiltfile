@@ -112,6 +112,8 @@ k8s_yaml([
     'infra/k8s/aplicacao/mcpserver/state-configmap.yaml',
     'infra/k8s/aplicacao/mcpserver/deployment.yaml',
     'infra/k8s/aplicacao/mcpserver/service.yaml',
+    'infra/k8s/aplicacao/mcpserver/networkpolicy.yaml',
+    'infra/k8s/aplicacao/mcpserver/pdb.yaml',
 ])
 
 k8s_resource('precoapi',

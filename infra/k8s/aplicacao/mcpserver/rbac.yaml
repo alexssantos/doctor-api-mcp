@@ -12,7 +12,7 @@ metadata:
   name: mcp-reader-cluster-role
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "endpoints"]
+    resources: ["pods", "services", "endpoints", "events"]
     verbs: ["get", "list"]
   - apiGroups: ["apps"]
     resources: ["deployments"]

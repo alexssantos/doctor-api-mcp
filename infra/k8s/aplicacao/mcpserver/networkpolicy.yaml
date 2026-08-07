@@ -1,0 +1,62 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcpserver
+  namespace: mcp-apis
+spec:
+  podSelector:
+    matchLabels:
+      app: mcpserver
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-apis
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 4000
+  egress:
+    # Cluster DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Prometheus, Jaeger, Loki and indexed applications in opted-in namespaces.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              observability.mcp-apis.io/allow: "true"
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 3100 }
+        - { protocol: TCP, port: 4000 }
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 9090 }
+        - { protocol: TCP, port: 16686 }
+    # The in-cluster Kubernetes API is exposed as HTTPS on service port 443.
+    # Application-level SSRF controls still restrict all configured HTTP hosts.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

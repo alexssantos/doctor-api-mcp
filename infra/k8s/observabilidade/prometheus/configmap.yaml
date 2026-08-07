@@ -9,6 +9,9 @@ data:
       scrape_interval: 15s
       evaluation_interval: 15s
 
+    rule_files:
+      - /etc/prometheus/mcpserver-rules.yml
+
     scrape_configs:
       - job_name: 'precoapi'
         metrics_path: /metrics
@@ -30,3 +33,48 @@ data:
           - targets: ['mcpserver:4000']
             labels:
               service: mcpserver
+
+  mcpserver-rules.yml: |
+    groups:
+      - name: mcpserver-slo-recording
+        interval: 15s
+        rules:
+          - record: mcpserver:slo_availability:ratio5m
+            expr: avg_over_time(up{job="mcpserver"}[5m])
+          - record: mcpserver:http_request_rate:5m
+            expr: sum(rate(http_server_request_duration_seconds_count{job="mcpserver"}[5m]))
+          - record: mcpserver:http_error_ratio:5m
+            expr: sum(rate(http_server_request_duration_seconds_count{job="mcpserver",http_response_status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job="mcpserver"}[5m])), 0.001)
+          - record: mcpserver:http_latency_p95_seconds:5m
+            expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="mcpserver"}[5m])))
+
+      - name: mcpserver-alerts
+        interval: 15s
+        rules:
+          - alert: McpServerUnavailable
+            expr: up{job="mcpserver"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: mcpserver
+            annotations:
+              summary: MCP Server is unavailable
+              description: Prometheus could not scrape the MCP Server for at least one minute.
+          - alert: McpServerHighErrorRatio
+            expr: mcpserver:http_error_ratio:5m > 0.05
+            for: 5m
+            labels:
+              severity: warning
+              service: mcpserver
+            annotations:
+              summary: MCP Server 5xx ratio is above 5 percent
+              description: The five-minute HTTP 5xx ratio has remained above the release SLO threshold.
+          - alert: McpServerHighLatency
+            expr: mcpserver:http_latency_p95_seconds:5m > 2
+            for: 5m
+            labels:
+              severity: warning
+              service: mcpserver
+            annotations:
+              summary: MCP Server p95 latency is above two seconds
+              description: The five-minute server latency p95 has remained above the release SLO threshold.

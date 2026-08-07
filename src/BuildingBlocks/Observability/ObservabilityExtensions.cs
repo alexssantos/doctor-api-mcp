@@ -17,7 +17,7 @@ public static class ObservabilityExtensions
         var otlpEndpoint = configuration["Otel:Endpoint"] ?? "http://localhost:4317";
         var captureBody = configuration.GetValue<bool>("Otel:CaptureBody");
 
-        services.AddOpenApiTelemetry(serviceName, otlpEndpoint, captureBody);
+        services.AddOpenApiTelemetry(serviceName, otlpEndpoint);
 
         services.AddMetricsTelemetry(serviceName);
 
@@ -42,8 +42,7 @@ public static class ObservabilityExtensions
     private static IServiceCollection AddOpenApiTelemetry(
         this IServiceCollection services,
         string serviceName,
-        string otlpEndpoint,
-        bool captureSensitiveData)
+        string otlpEndpoint)
     {
         services.AddOpenTelemetry()
             .WithTracing(tracing =>
@@ -59,13 +58,9 @@ public static class ObservabilityExtensions
                     {
                         opts.RecordException = true;
                     })
-                    .AddEntityFrameworkCoreInstrumentation(opts =>
-                    {
-                        // SQL statement text (and its parameter values) is only recorded
-                        // when explicit body/sensitive-data capture is enabled (Otel:CaptureBody),
-                        // to avoid leaking query data (potential PII) into Jaeger by default.
-                        opts.SetDbStatementForText = captureSensitiveData;
-                    })
+                    // EF Core instrumentation 1.13+ always emits sanitized SQL text.
+                    // Query parameter values remain disabled by default to avoid PII leaks.
+                    .AddEntityFrameworkCoreInstrumentation()
                     .AddOtlpExporter(opts =>
                     {
                         opts.Endpoint = new Uri(otlpEndpoint);

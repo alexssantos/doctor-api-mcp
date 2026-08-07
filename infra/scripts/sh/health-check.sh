@@ -100,12 +100,12 @@ section "4. Pods"
 get_pod_status() {
   local name="$1"
   local result
-  result=$(kubectl get pods -n "${NAMESPACE}" -l "app=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+  result=$(kubectl get pods -n "${NAMESPACE}" -l "app=${name}" --no-headers 2>/dev/null | awk '$3=="Running"{print $3" "$2; exit}')
   if [[ -z "$result" ]]; then
-    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/name=${name}" --no-headers 2>/dev/null | awk '$3=="Running"{print $3" "$2; exit}')
   fi
   if [[ -z "$result" ]]; then
-    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/instance=${name}" --no-headers 2>/dev/null | awk 'NR==1{print $3" "$2}')
+    result=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/instance=${name}" --no-headers 2>/dev/null | awk '$3=="Running"{print $3" "$2; exit}')
   fi
   echo "$result"
 }
@@ -201,6 +201,8 @@ http_check "ProdutoAPI /metrics"          "http://localhost:5002/metrics"
 http_check "ProdutoAPI /openapi/v1.json"  "http://localhost:5002/openapi/v1.json"
 http_check "ProdutoAPI /scalar/v1"        "http://localhost:5002/scalar/v1"
 http_check "McpServer  /health"           "http://localhost:4000/health"
+http_check "McpServer  /live"             "http://localhost:4000/live"
+http_check "McpServer  /ready"            "http://localhost:4000/ready"
 http_check "Prometheus /api/v1/status"    "http://localhost:9090/api/v1/status/config"
 http_check "Grafana    /api/health"       "http://localhost:3000/api/health"
 http_check "Jaeger     UI"                "http://localhost:16686"

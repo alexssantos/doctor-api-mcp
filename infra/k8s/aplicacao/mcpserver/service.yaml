@@ -5,6 +5,9 @@ metadata:
   namespace: mcp-apis
   labels:
     app: mcpserver
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "mcp-route"
 spec:
   selector:
     app: mcpserver

@@ -4,15 +4,15 @@ metadata:
   name: precoapi-ingress
   namespace: mcp-apis
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    traefik.ingress.kubernetes.io/router.entrypoints: "web"
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: precoapi.local
       http:
         paths:
-          - path: /()(.*)
-            pathType: ImplementationSpecific
+          - path: /
+            pathType: Prefix
             backend:
               service:
                 name: precoapi

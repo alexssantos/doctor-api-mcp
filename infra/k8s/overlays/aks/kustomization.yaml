@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../aplicacao/mcpserver
+  - httproute.yaml
+patches:
+  - path: configmap.yaml
+  - path: deployment.yaml
+  - path: delete-ingress.yaml
+  - path: networkpolicy.yaml
+  - path: pdb.yaml
+images:
+  - name: mcpserver
+    newName: registry.example.invalid/mcpserver
+    newTag: release
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mcp-apis
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/environment: aks
+    includeSelectors: false

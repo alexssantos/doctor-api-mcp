@@ -19,12 +19,18 @@ $ErrorActionPreference = 'Stop'
 $NAMESPACE       = 'mcp-apis'
 $CLUSTER_NAME    = 'mcp-apis'
 $CLUSTER_CONTEXT = "k3d-$CLUSTER_NAME"
+# k3d 5.8.3 defaults to the obsolete K3s 1.31 image. K3s 1.36.1 is
+# explicitly pinned because its embedded kube-router controller was validated
+# to enforce NetworkPolicy in WSL; 1.31 created policy chains but did not link
+# them to Pod traffic in this environment.
+$K3S_IMAGE       = 'rancher/k3s:v1.36.1-k3s1'
 $REPO_ROOT       = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $driveLetter     = $REPO_ROOT.Substring(0,1).ToLower()
 $WSL_REPO        = "/mnt/$driveLetter" + ($REPO_ROOT.Substring(2) -replace '\\', '/')
 
 $script:PASS     = 0
 $script:FAIL     = 0
+$script:RELEASE_BLOCKER = $false
 
 function RunInWSL([string]$Cmd) { wsl.exe -- bash -lc $Cmd }
 function Banner($msg) { Write-Host ""; Write-Host "══► $msg" -ForegroundColor Cyan }
@@ -72,7 +78,7 @@ if ($clusters -contains $CLUSTER_NAME) {
     }
 } else {
     Info "Criando cluster '$CLUSTER_NAME'..."
-    RunInWSL "k3d cluster create $CLUSTER_NAME --port 8080:80@loadbalancer --port 8443:443@loadbalancer --k3s-arg '--disable=traefik@server:0'"
+    RunInWSL "k3d cluster create $CLUSTER_NAME --image $K3S_IMAGE --port 8080:80@loadbalancer --port 8443:443@loadbalancer --k3s-arg '--prefer-bundled-bin@server:0'"
     Ok "Cluster criado"
 }
 
@@ -101,25 +107,37 @@ for ($i = 1; $i -le 3; $i++) {
 }
 if (-not $connected) { Err "Nao foi possivel conectar ao API server. Execute 'k3d cluster list' no WSL para verificar o cluster." }
 
-# ─── 2. Nginx Ingress Controller ──────────────────────────────────────────────
-Banner "2. Nginx Ingress Controller"
-$ingressNs = RunInWSL "kubectl get namespace ingress-nginx --no-headers 2>/dev/null"
-if ($ingressNs) {
-    $dp = RunInWSL "kubectl get deployment ingress-nginx-controller -n ingress-nginx --no-headers 2>/dev/null"
-    if ($dp -match '\s[1-9]\d*/') {
-        Ok "Nginx ingress controller ja esta pronto"
-    } else {
-        Info "Nginx ingress existe mas nao esta pronto — aguardando..."
-        RunInWSL "kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=180s"
-        Ok "Nginx ingress controller pronto"
-    }
+$serverVersionRaw = (RunInWSL "kubectl get node -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null").Trim()
+if ($serverVersionRaw -match '^v(\d+)\.(\d+)' -and
+    ([int]$Matches[1] -lt 1 -or ([int]$Matches[1] -eq 1 -and [int]$Matches[2] -lt 36))) {
+    $script:RELEASE_BLOCKER = $true
+    Warn "Cluster existente usa Kubernetes $serverVersionRaw; NetworkPolicy foi validada somente em K3s 1.36.1+."
+    Warn "Nao ha upgrade in-place seguro no k3d. Preserve os dados e recrie o cluster antes do gate de release."
+} elseif ($serverVersionRaw -match '^v(\d+)\.(\d+)') {
+    Ok "Versao Kubernetes compativel com o gate de NetworkPolicy: $serverVersionRaw"
 } else {
-    Info "Instalando nginx ingress controller..."
-    RunInWSL "kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml"
-    Info "Aguardando nginx ingress controller..."
-    RunInWSL "kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=180s"
-    Ok "Nginx ingress controller instalado e pronto"
+    $script:RELEASE_BLOCKER = $true
+    Warn "Nao foi possivel identificar a versao Kubernetes; valide NetworkPolicy antes do release."
 }
+
+# ─── 2. Traefik nativo do K3s ─────────────────────────────────────────────────
+Banner "2. Traefik nativo do K3s"
+$traefik = RunInWSL "kubectl get deployment traefik -n kube-system --no-headers 2>/dev/null"
+if (-not $traefik) {
+    $legacyNginx = RunInWSL "kubectl get deployment ingress-nginx-controller -n ingress-nginx --no-headers 2>/dev/null"
+    if ($legacyNginx) {
+        Err "Cluster legado foi criado com Traefik desabilitado. Preserve os dados e recrie-o; os manifests atuais nao usam mais Ingress-NGINX."
+    }
+
+    Info "Aguardando o Helm controller do K3s criar deployment/traefik..."
+    RunInWSL "kubectl wait --for=create deployment/traefik -n kube-system --timeout=180s"
+    if ($LASTEXITCODE -ne 0) { Err "Traefik nativo nao foi criado pelo K3s" }
+}
+
+RunInWSL "kubectl wait --for=condition=Available deployment/traefik -n kube-system --timeout=180s"
+if ($LASTEXITCODE -ne 0) { Err "Traefik nativo nao ficou disponivel" }
+$traefikImage = (RunInWSL "kubectl get deployment traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null").Trim()
+Ok "Traefik nativo pronto: $traefikImage"
 
 # ─── 3. Build e import das imagens Docker ─────────────────────────────────────
 if ($Build) {
@@ -166,12 +184,29 @@ $manifests = @(
     'aplicacao/produtoapi'
 )
 foreach ($m in $manifests) {
-    $out = RunInWSL "kubectl apply -f $WSL_REPO/infra/k8s/$m 2>&1"
+    $applyTarget = if ($m -eq 'aplicacao/mcpserver') {
+        "-k $WSL_REPO/infra/k8s/overlays/k3d"
+    } else {
+        "-f $WSL_REPO/infra/k8s/$m"
+    }
+    $out = RunInWSL "kubectl apply $applyTarget 2>&1"
     if ($LASTEXITCODE -ne 0) {
         $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
         Err "Falha ao aplicar manifests de '$m'"
     }
     Ok "Manifest $m aplicado"
+}
+
+# Tags :latest importadas no containerd nao substituem containers que ja
+# estavam em execucao. Reinicie explicitamente os deployments locais para que
+# todo -Build valide exatamente as imagens acabadas de importar.
+if ($Build) {
+    foreach ($deployment in @('precoapi', 'produtoapi', 'mcpserver')) {
+        Info "Reiniciando deployment/$deployment para carregar a imagem importada..."
+        RunInWSL "kubectl rollout restart deployment/$deployment -n $NAMESPACE"
+        if ($LASTEXITCODE -ne 0) { Err "Falha ao reiniciar deployment/$deployment" }
+    }
+    Ok "Deployments locais reiniciados com as imagens importadas"
 }
 
 if ($CaptureBody) {
@@ -230,10 +265,15 @@ Write-Host "╔═════════════════════�
 Write-Host "║                   Resumo                     ║" -ForegroundColor White
 Write-Host "╚══════════════════════════════════════════════╝" -ForegroundColor White
 
-if ($script:FAIL -eq 0) {
+if ($script:FAIL -eq 0 -and -not $script:RELEASE_BLOCKER) {
     Write-Host ""
     Write-Host "  Ambiente Kubernetes esta UP e saudavel!" -ForegroundColor Green
     Write-Host "  PASS: $($script:PASS)   FAIL: $($script:FAIL)" -ForegroundColor Green
+} elseif ($script:FAIL -eq 0) {
+    Write-Host ""
+    Write-Host "  Ambiente Kubernetes esta operacional, mas o gate de release da Fase 7 esta BLOQUEADO." -ForegroundColor Yellow
+    Write-Host "  PASS: $($script:PASS)   FAIL: $($script:FAIL)   RELEASE GATE: BLOCKED" -ForegroundColor Yellow
+    Write-Host "  Preserve os dados e recrie o cluster com K3s 1.36.1+ para validar NetworkPolicy." -ForegroundColor Yellow
 } else {
     Write-Host ""
     Write-Host "  PASS: $($script:PASS)   FAIL: $($script:FAIL)" -ForegroundColor Yellow
@@ -241,13 +281,13 @@ if ($script:FAIL -eq 0) {
 }
 
 Write-Host ""
-Write-Host "  Acesso aos servicos (port-forward manual: .\scripts\ps\port-forward.ps1):" -ForegroundColor White
+Write-Host "  Acesso aos servicos (port-forward manual: .\infra\scripts\ps\port-forward.ps1):" -ForegroundColor White
 Write-Host "    PrecoAPI   -> http://localhost:5001/scalar/v1"
 Write-Host "    ProdutoAPI -> http://localhost:5002/scalar/v1"
 Write-Host "    McpServer  -> http://localhost:4000"
 Write-Host "    Jaeger     -> http://localhost:16686"
 Write-Host "    Prometheus -> http://localhost:9090"
-Write-Host "    Grafana    -> http://localhost:3000  (admin/admin)"
+Write-Host "    Grafana    -> http://localhost:3000  (credencial no Secret local)"
 Write-Host ""
 
 if ($script:FAIL -gt 0) { exit 1 }

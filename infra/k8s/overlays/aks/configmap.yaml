@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcpserver-config
+  namespace: mcp-apis
+data:
+  Security__Authentication__Enabled: "true"
+  # Replace these cluster-internal endpoints with the services selected by the
+  # target AKS platform. None of the k3d browser hosts are inherited.
+  DataSources__Jaeger__BaseUrl: "http://jaeger-query.observability.svc.cluster.local:16686"
+  DataSources__Prometheus__BaseUrl: "http://prometheus-query.observability.svc.cluster.local:9090"
+  DataSources__Loki__BaseUrl: "http://loki-gateway.observability.svc.cluster.local:3100"
+  Otel__Endpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+  Dashboard__Links__Jaeger: "https://jaeger.example.invalid"
+  Dashboard__Links__Prometheus: "https://prometheus.example.invalid"
+  Dashboard__Links__Grafana: "https://grafana.example.invalid"

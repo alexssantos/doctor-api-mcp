@@ -1,6 +1,6 @@
 # mcp-apis
 
-Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de IA usando o **Model Context Protocol (MCP)**. Dois microsserviços .NET (PrecoAPI e ProdutoAPI) rodam em um cluster k3d local com observabilidade completa. Um servidor MCP fornece ferramentas que permitem a LLMs consultar o estado vivo do sistema: rotas disponíveis, traces, saúde dos pods e dependências entre serviços.
+Projeto de estudo que demonstra como expor observabilidade de um cluster Kubernetes para agentes de IA usando o **Model Context Protocol (MCP)**. Dois microsserviços .NET (PrecoAPI e ProdutoAPI) rodam em k3d com métricas, traces e logs. O McpServer correlaciona esses sinais em contratos normalizados de catálogo, saúde, dependências, anomalias, timeline de incidente e causa raiz explicável, sem executar ações nos workloads observados.
 
 ---
 
@@ -15,7 +15,6 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
 - [Dashboard](#dashboard)
 - [Observabilidade](#observabilidade)
 - [Kubernetes](#kubernetes)
-- [Helm Charts](#helm-charts)
 - [Scripts de Automação](#scripts-de-automação)
 - [Decisões de Implementação](#decisões-de-implementação)
 - [Portas e Acessos](#portas-e-acessos)
@@ -35,13 +34,12 @@ Projeto de estudo que demonstra como expor um cluster Kubernetes para agentes de
                       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  McpServer  (port 4000)                                             │
-│  • 9 ferramentas MCP                                                │
-│  • Dashboard React em /dashboard (com switch de indexação)         │
+│  • 16 ferramentas MCP por padrão: 8 legadas + 8 vNext              │
+│  • Dashboard SRE React em /dashboard (5 fluxos operacionais)       │
 │  • Descoberta automática de aplicações (deployments/rede/OTel)     │
-│  • Consulta Kubernetes API (in-cluster, read-only)                  │
-│  • Consulta Jaeger API (traces e dependências)                      │
-│  • Consulta Prometheus API (métricas)                               │
-│  • Consulta OpenAPI de cada serviço                                 │
+│  • Providers tipados: Kubernetes, Prometheus, Jaeger, Loki, OpenAPI│
+│  • Engines: health, dependency, anomaly, correlation e RCA         │
+│  • Autenticação reader/admin, limites, cache e auditoria            │
 └──────────┬───────────────────────────┬─────────────────────────────┬┘
            │                           │                             │
            ▼                           ▼                             ▼
@@ -132,8 +130,8 @@ Transporte: **Streamable HTTP** via `POST /` (protocolo MCP 2025-03-26).
 | Npgsql.EFCore | 10 | Provider PostgreSQL |
 | ModelContextProtocol.AspNetCore | 1.3.0 | SDK MCP para o McpServer |
 | KubernetesClient | 19.0.2 | Consulta à Kubernetes API (in-cluster) |
-| OpenTelemetry SDK | latest | Tracing + Metrics exportados via OTLP |
-| OpenTelemetry.Instrumentation.EFCore | 1.12.0-beta.1 | Instrumentação automática de queries SQL |
+| OpenTelemetry SDK | 1.17.0 | Tracing + Metrics exportados via OTLP/Prometheus |
+| OpenTelemetry.Instrumentation.EFCore | 1.17.0-beta.1 | Instrumentação SQL sanitizada conforme semantic conventions |
 | Scalar.AspNetCore | 2.5.0 | UI de documentação da API (substitui Swagger UI) |
 | Microsoft.AspNetCore.OpenApi | 10 | Geração de spec OpenAPI nativa do .NET |
 
@@ -143,14 +141,14 @@ Transporte: **Streamable HTTP** via `POST /` (protocolo MCP 2025-03-26).
 |---|---|
 | k3d + k3s | Cluster Kubernetes local em Docker |
 | Docker | Runtime dos containers (buildado localmente, `imagePullPolicy: Never`) |
-| nginx Ingress Controller | Roteamento externo de requests para os serviços |
+| Traefik v3 (nativo do K3s) | Roteamento local e afinidade de sessão sem controller externo |
+| Kubernetes Gateway API (AKS) | Entrada TLS do ambiente alvo por controller gerenciado pela plataforma |
 | Jaeger | Distributed tracing — recebe spans OTLP, expõe UI e API REST |
 | Prometheus | Scraping de métricas dos endpoints `/metrics` |
 | Grafana | Visualização de métricas e logs |
 | Loki | Armazenamento de logs (schema v13, storage filesystem) |
 | Promtail | Coleta de logs dos pods via DaemonSet |
 | PostgreSQL 16 | Banco de dados — duas instâncias separadas (StatefulSet) |
-| Helm 3 | Empacotamento alternativo dos manifestos |
 
 ---
 
@@ -228,12 +226,9 @@ mcp-apis/
 │       ├── promtail/                      # DaemonSet
 │       └── grafana/                       # + configmap-datasources.yaml
 │
-├── helm/                                  # Charts Helm (alternativa aos manifestos k8s/)
-│   ├── mcpserver/
-│   ├── precoapi/
-│   └── produtoapi/
-│
-├── scripts/
+├── infra/
+│   ├── k8s/                              # Manifests + overlays k3d/AKS
+│   └── scripts/
 │   ├── ps/                                # PowerShell (Windows)
 │   │   ├── up-k8s.ps1                    # Sobe o ambiente completo
 │   │   ├── down-k8s.ps1                  # Derruba o cluster
@@ -243,7 +238,6 @@ mcp-apis/
 │   │   └── wsl-run.ps1                   # Helper para executar no WSL
 │   └── sh/                               # Shell (WSL/Linux)
 │       ├── deploy-k8s.sh                 # Deploy via kubectl
-│       ├── deploy-helm.sh                # Deploy via Helm
 │       ├── teardown-k8s.sh
 │       ├── teardown-helm.sh
 │       ├── port-forward.sh
@@ -268,7 +262,7 @@ mcp-apis/
 
 ## MCP Server — Ferramentas
 
-O McpServer expõe 9 ferramentas para agentes de IA. Todas recebem dependências via injeção (DI do .NET — o SDK MCP resolve automaticamente parâmetros que são serviços registrados).
+O McpServer expõe **16 ferramentas por padrão**: oito legadas de compatibilidade e oito vNext com envelopes, limites, freshness, fontes e evidências. Todas recebem dependências via injeção de dependência.
 
 | Ferramenta | Descrição | Fontes de Dados |
 |---|---|---|
@@ -280,9 +274,16 @@ O McpServer expõe 9 ferramentas para agentes de IA. Todas recebem dependências
 | `get_health` | Verifica a saúde de um serviço via estado dos pods (ready, restarts) | Kubernetes API |
 | `find_dependencies` | Mapa de dependências entre serviços usando o grafo do Jaeger | Jaeger `/api/dependencies` |
 | `find_data_origin` | Rastreia a origem dos dados de uma rota: API → chamadas HTTP → queries SQL | OpenAPI + Jaeger + Kubernetes |
-| `query_metrics` | Executa queries PromQL arbitrárias contra Prometheus (instant ou range) | Prometheus `/api/v1/query*` |
+| `service_get_spec` | Consolida identidade, versão, imagem, cobertura e endpoints | Catálogo + OpenAPI + Kubernetes |
+| `service_get_health` | Avalia RED, estabilidade e recursos com score/findings | Prometheus + Kubernetes |
+| `service_get_score` | Projeta o score de saúde para automações de leitura | Health Engine |
+| `service_get_dependencies` | Retorna grafo normalizado e limitado por profundidade | Jaeger + Dependency Engine |
+| `service_detect_anomalies` | Compara janela atual com baseline e classifica severidade | Prometheus + Anomaly Engine |
+| `service_get_incident_timeline` | Correlaciona anomalias, traces, logs e deploy/events | Loki + Jaeger + Kubernetes |
+| `service_find_root_cause` | Gera hipóteses explicáveis e recommendations não executáveis | Correlation + RCA Engine |
+| `system_get_health_summary` | Resume a saúde dos serviços pelo mesmo engine do dashboard | Health Engine + catálogo |
 
-> 🔒 **Switch de indexação:** aplicações desabilitadas no dashboard ficam invisíveis para as tools — `get_openapi`/`explain_api`/`find_data_origin`/`get_health`/`trace_route` recusam com erro explicativo, `list_services`/`find_dependencies` omitem os dados (informando em `disabledApplications`), e `query_metrics` recusa queries que mencionem a aplicação (best-effort). Detalhes em [`doc/features/004_automatic_application_discovery.md`](doc/features/004_automatic_application_discovery.md).
+> 🔒 **Superfície segura:** aplicações desabilitadas continuam protegidas pelo catálogo. `query_metrics` foi retirado da superfície padrão; PromQL bruto só pode existir nos endpoints administrativos quando `Observability:Features:EnableRawQueries=true`, com policy admin. O dashboard e as tools vNext consomem os mesmos providers/engines tipados.
 
 ### Registro das ferramentas
 
@@ -467,59 +468,24 @@ O McpServer também expõe um **Dashboard web interativo** em `/dashboard` que o
 
 ### Funcionalidades
 
-**1. Header**
-- **Status de Saúde:** badge em tempo real mostrando a saúde geral do cluster
-- **Modo Escuro/Claro:** toggle com sincronização com preferência do sistema
-- **Atualização Manual:** botão refresh que recarrega dados de todos os painéis
-- **Horário da Última Atualização:** timestamp local
+O dashboard foi reorganizado em cinco fluxos operacionais. Ele não recebe
+PromQL/LogQL do navegador; todas as decisões vêm dos mesmos engines das tools.
 
-**2. Quick Links**
-- Links rápidos para **Jaeger**, **Prometheus** e **Grafana** abrindo em novas abas
-- Usa as URLs configuradas em `Dashboard:Links` (acessíveis via navegador)
-- Ícones temáticos com cores que remetem a cada ferramenta
+1. **Visão geral** — estado sistêmico, score/coverage, serviços críticos,
+   findings, fontes, freshness, pods e deployments.
+2. **Serviço** — gauge de saúde, dimensões, evidências, anomalias, grafo de
+   dependências limitado, versão/imagem e resumo OpenAPI.
+3. **Incidente** — timeline normalizada, hipótese de causa raiz, confidence,
+   evidências contraditórias e recommendations sempre `executable=false`.
+4. **Catálogo** — inventário namespace-aware, cobertura por sinal, validação
+   OpenAPI e toggle administrativo persistido em `mcpserver-state`.
+5. **Projeto** — arquitetura, oito tools vNext, postura de segurança e fluxo de
+   execução local WSL/k3d.
 
-**3. Cards de Estatísticas**
-- **Serviços Indexados:** número total de serviços descobertos pelo MCP
-- **Pods Prontos:** percentual de pods em estado `Running` e `Ready`
-- **Deployments Prontos:** percentual de deployments com todas as réplicas ready
-- **Saúde do Cluster:** status geral agregado (verde/amarelo/vermelho)
-
-**4. Painel de Aplicações Descobertas**
-- Lista **todas** as aplicações auto-descobertas no cluster (deployments, rede, OTel, config)
-- **Switch de indexação MCP** por aplicação (optimistic update; persiste no ConfigMap `mcpserver-state`)
-  - Travado (com tooltip) quando o Service tem a label `mcp-apis/indexed: "false"`
-- Por aplicação, mostra:
-  - **Nome e Status de Saúde** (badge Saudável/Degradado/Sem Pods)
-  - **Badges de fonte:** `Deploy` / `Rede` / `OTel` / `Config` + namespace
-  - **Badge OpenAPI:** verde com o path quando validada; "Não indexável" com tooltip dos motivos quando não
-  - **URL Base**, contagem de pods, restarts (se > 0)
-  - Badge **"Não vista há Xmin"** quando a aplicação sumiu do cluster
-- Botão **Re-scan** força uma nova descoberta imediata
-- Click em uma aplicação a seleciona para visualizar seus traces e métricas
-
-**5. Painel de Traces**
-- Mostra os **12 traces mais recentes** do serviço selecionado via Jaeger
-- Para cada trace:
-  - **Duração:** tempo total da request (ms/s)
-  - **Span Count:** número de spans
-  - **Timestamp:** quando ocorreu
-- Botão **"Abrir no Jaeger"** redireciona para a busca completa no Jaeger UI
-
-**6. Painel de Dependências**
-- **Grafo de serviços:** mostra que serviço chama qual outro
-- Lista os **pais → filhos** com ícone `→` representando a direção da chamada
-- **Call Count:** quantas vezes a chamada ocorreu (agregado)
-- Ajuda a entender o fluxo de dados na arquitetura
-
-**7. Painel de Métricas (PromQL)**
-- **Presets:** dropdown com queries pré-configuradas:
-  - `up` — status do serviço (1=up, 0=down)
-  - `requestRate` — taxa de requests por segundo
-  - `errorRate` — taxa de erros (HTTP 5xx)
-  - `memory` — uso de memória do container
-  - `custom` — campo livre para digitar PromQL
-- **Série Temporal:** gráfico em linha mostrando 30 minutos de histórico com resolução de 15s
-- Renderizado via **recharts** com grid, eixos e tooltips interativas
+O header mantém refresh, timestamp, links externos e tema claro/escuro
+persistente. A interface possui skip-link, foco visível, headings semânticos,
+alvos de toque de 44 px, tabelas acessíveis e layout responsivo sem overflow na
+largura móvel.
 
 ### Stack Técnico
 
@@ -529,22 +495,24 @@ O McpServer também expõe um **Dashboard web interativo** em `/dashboard` que o
 - **Tailwind CSS v4** com `@tailwindcss/vite` plugin — CSS-first, tokens OKLCH, dark mode
 - **Shadcn-style components** — componentes hand-built seguindo padrões shadcn (cva variants, Radix primitives)
 - **TanStack React Query v5** — gerenciamento de estado das requisições, refetch automático a cada 15s
-- **Recharts** — visualização de gráficos (LineChart com tooltips)
+- **Playwright** — testes E2E de acessibilidade, dark mode, responsividade e console
 - **Lucide React** — ícones (Activity, RefreshCw, Moon, Sun, Server, HeartPulse, etc.)
 
 **Backend (em `src/Services/McpServer/`):**
-- **IPrometheusCollector / PrometheusService** — wrapper da Prometheus HTTP API (`/api/v1/query`, `/api/v1/query_range`, `/api/v1/targets`)
-- **DashboardEndpoints.cs / ApplicationsEndpoints.cs** — rotas REST que proxificam os dados:
-  - `GET /api/dashboard/overview` — cluster summary (pods, deployments, saúde)
-  - `GET /api/dashboard/services` — lista de serviços com health por pod
-  - `GET /api/dashboard/applications` — inventário de aplicações descobertas (fontes, validação, toggle)
-  - `PUT /api/dashboard/applications/{name}/indexing` — habilita/desabilita a indexação MCP (`{"enabled": bool}`)
-  - `POST /api/dashboard/discovery/rescan` — força um novo scan de descoberta
-  - `GET /api/dashboard/traces?service=&limit=15` — traces do Jaeger agrupados
-  - `GET /api/dashboard/dependencies` — grafo do Jaeger
-  - `GET /api/dashboard/metrics?query=` — instant query do Prometheus
-  - `GET /api/dashboard/metrics/range?query=&minutes=30&step=15s` — range query do Prometheus
-  - `GET /api/dashboard/links` — URLs dos dashboards externos (Jaeger, Prometheus, Grafana)
+- **Providers/engines vNext** — projeções tipadas, limites e falha parcial explicável
+- **DashboardEndpoints.cs / ApplicationsEndpoints.cs** — rotas REST normalizadas:
+  - `GET /api/dashboard/overview` — resumo sistêmico + cluster
+  - `GET /api/dashboard/intelligence/system` — envelope do System Health Engine
+  - `GET /api/dashboard/intelligence/services/{service}/spec`
+  - `GET /api/dashboard/intelligence/services/{service}/health`
+  - `GET /api/dashboard/intelligence/services/{service}/dependencies`
+  - `GET /api/dashboard/intelligence/services/{service}/anomalies`
+  - `GET /api/dashboard/intelligence/services/{service}/timeline`
+  - `GET /api/dashboard/intelligence/services/{service}/root-cause`
+  - `GET /api/dashboard/applications` — inventário e capacidade administrativa
+  - `PUT /api/dashboard/applications/{name}/indexing` — policy admin
+  - `POST /api/dashboard/discovery/rescan` — policy admin
+  - `GET /api/dashboard/links` — URLs browser-facing
 - **Static Files:** Vite build output em `wwwroot/dashboard/`, servido via `UseDefaultFiles()` + `UseStaticFiles()` + SPA fallback routes
 
 ### Configuração
@@ -613,7 +581,7 @@ builder.Services.AddObservability("PrecoAPI", builder.Configuration);
 **Tracing (→ Jaeger via OTLP gRPC porta 4317):**
 - Instrumentação automática: ASP.NET Core, HttpClient, Entity Framework Core
 - `RecordException = true` — exceções aparecem nos spans
-- EF Core: `SetDbStatementForText = true` — queries SQL visíveis nos traces
+- EF Core 1.13+ emite texto SQL sanitizado por padrão; valores de parâmetros permanecem desativados para evitar PII
 
 **Métricas (→ Prometheus via scraping do `/metrics`):**
 - Instrumentação automática: ASP.NET Core, HttpClient, Runtime .NET
@@ -627,7 +595,7 @@ Ativada via `Otel:CaptureBody: true` no ConfigMap ou pelo parâmetro `-CaptureBo
 app.UseBodyCaptureTelemetry(); // registra Request + Response body middleware
 ```
 
-Os bodies são truncados a 1000 caracteres e adicionados como tags nos spans: `http.request.body`, `http.response.body`.
+Os bodies são limitados por `Otel:MaxCapturedBodyBytes` (16 KiB por padrão), passam por redaction de campos sensíveis e são adicionados como tags nos spans somente quando a feature está ativa.
 
 ### Propagação de Correlation ID
 
@@ -682,17 +650,22 @@ PrecoAPI e ProdutoAPI com:
 
 ### Ingress
 
-nginx Ingress Controller com:
+Traefik nativo do K3s no laboratório k3d com:
 - Host-based routing: `precoapi.local`, `produtoapi.local`
-- Annotation `nginx.ingress.kubernetes.io/rewrite-target: /$2`
+- IngressClass `traefik` e rotas `PathPrefix`
+- cookie affinity `mcp-route` no Service do McpServer
 - k3d expõe as portas `8080:80` e `8443:443` via loadbalancer no host
+
+O overlay AKS remove o `Ingress` local e publica uma `HTTPRoute` para um Gateway
+API suportado e administrado pela plataforma; Traefik também pode ser o
+controller desse Gateway quando aprovado no ambiente alvo.
 
 ### RBAC do McpServer
 
 ```yaml
 ServiceAccount: mcp-reader
 ClusterRole: mcp-reader-cluster-role          # descoberta cluster-wide (feature 004)
-  - pods, services, endpoints: get, list
+  - pods, services, endpoints, events: get, list
   - deployments: get, list
 Role: mcp-reader-role (namespace mcp-apis)
   - configmaps: get, list
@@ -703,62 +676,47 @@ RoleBinding: mcp-reader-binding
 
 O McpServer usa `KubernetesClientConfiguration.InClusterConfig()` — não precisa de kubeconfig montado, o ServiceAccount é injetado automaticamente pelo Kubernetes. A única permissão de escrita é `update/patch` no ConfigMap `mcpserver-state` (restrita via `resourceNames`).
 
----
-
-## Helm Charts
-
-Os charts em `helm/` são uma alternativa idempotente ao deploy direto via `k8s/`. Cobrem apenas os três serviços da aplicação (não a stack de observabilidade).
-
-Cada chart segue a estrutura padrão Helm com `_helpers.tpl` para labels comuns. O `values.yaml` expõe:
-
-- `image.tag`, `image.pullPolicy`
-- `replicaCount`
-- `resources` (requests/limits)
-- `ingress.enabled`, `ingress.host`
-- Configurações de banco e observabilidade como values
-
-Deploy via Helm:
-```bash
-./scripts/sh/deploy-helm.sh
-```
+O McpServer roda com duas réplicas, PDB, NetworkPolicy, rollout sem indisponibilidade, probes `/ready` e `/live`, filesystem read-only e afinidade de sessão no Ingress. Detalhes e matriz de validação: [`doc/operations/observability-intelligence-rollout.md`](doc/operations/observability-intelligence-rollout.md).
 
 ---
 
 ## Scripts de Automação
 
-### `scripts/ps/up-k8s.ps1` (principal)
+### `infra/scripts/ps/up-k8s.ps1` (principal)
 
-Sobe o ambiente completo do zero ou a partir de um estado parcial. Cada etapa é idempotente.
+Sobe o ambiente completo do zero ou a partir de um estado parcial. Cada etapa é
+idempotente em clusters atuais. Clusters legados sem Traefik ou abaixo do K3s
+1.36 são bloqueados antes do apply para exigir migração com preservação de dados.
 
 ```
 Seção 0 — Valida ambiente WSL (wsl-check.ps1)
 Seção 1 — Cria/inicia cluster k3d
-Seção 2 — Instala nginx Ingress Controller
-Seção 3 — Build Docker + k3d image import  (pulável com -SkipBuild)
-Seção 4 — kubectl apply de todos os manifests
+Seção 2 — Aguarda e valida o Traefik nativo do K3s
+Seção 3 — Build Docker + k3d image import  (habilitado com -Build)
+Seção 4 — kubectl apply dos manifests e overlay k3d
 Seção 5 — kubectl rollout status de todos os workloads
 Seção 6 — Health check completo com port-forwards  (pulável com -SkipHealthCheck)
 ```
 
 Parâmetros:
 ```powershell
-.\scripts\ps\up-k8s.ps1                   # deploy completo
-.\scripts\ps\up-k8s.ps1 -SkipBuild        # pula build (imagens já importadas)
-.\scripts\ps\up-k8s.ps1 -SkipHealthCheck  # pula verificação final
-.\scripts\ps\up-k8s.ps1 -CaptureBody      # habilita captura de body no OTEL
+.\infra\scripts\ps\up-k8s.ps1                   # aplica imagens já importadas
+.\infra\scripts\ps\up-k8s.ps1 -Build            # build WSL + import + deploy
+.\infra\scripts\ps\up-k8s.ps1 -SkipHealthCheck  # pula verificação final
+.\infra\scripts\ps\up-k8s.ps1 -CaptureBody      # habilita captura de body no OTEL
 ```
 
 **Detalhe de implementação:** Todos os comandos `k3d`, `kubectl` e `docker` são executados via WSL (instalados apenas no WSL, não no Windows). O helper `RunInWSL` usa `wsl.exe -- bash -lc` (login shell para carregar `~/.local/bin` no PATH).
 
-### `scripts/ps/wsl-check.ps1`
+### `infra/scripts/ps/wsl-check.ps1`
 
 Valida o ambiente WSL antes do deploy: versão do WSL, distro, tools disponíveis, Docker daemon. Executado automaticamente pela seção 0 do `up-k8s.ps1`.
 
-### `scripts/ps/port-forward.ps1`
+### `infra/scripts/ps/port-forward.ps1`
 
 Inicia todos os port-forwards para acesso local sem precisar subir o ambiente completo.
 
-### `scripts/ps/validate.ps1`
+### `infra/scripts/ps/validate.ps1`
 
 Smoke tests: chama os endpoints das APIs, verifica Prometheus, Grafana, Jaeger e o protocolo MCP (initialize handshake).
 
@@ -810,11 +768,11 @@ A captura de body HTTP nos spans OTLP está desabilitada por padrão para evitar
 | **Dashboard** | `localhost:4000` | **`http://localhost:4000/dashboard`** |
 | Jaeger UI | `localhost:16686` | `http://localhost:16686` |
 | Prometheus | `localhost:9090` | `http://localhost:9090` |
-| Grafana | `localhost:3000` | `http://localhost:3000` (admin/admin) |
+| Grafana | `localhost:3000` | `http://localhost:3000` (credencial no Secret local) |
 
 Via Ingress (requer entrada no `/etc/hosts` ou `C:\Windows\System32\drivers\etc\hosts`):
 ```
-127.0.0.1  precoapi.local produtoapi.local
+127.0.0.1  precoapi.local produtoapi.local mcpserver.local
 ```
 
 ---
@@ -825,6 +783,7 @@ Via Ingress (requer entrada no `/etc/hosts` ou `C:\Windows\System32\drivers\etc\
 
 - Windows com WSL2 (Ubuntu)
 - No WSL: `k3d`, `kubectl`, `docker` em `~/.local/bin` ou `/usr/local/bin`
+- K3s 1.36.1+ para enforcement validado de NetworkPolicy (novos clusters são pinados pelo script)
 - Docker daemon rodando no WSL
 - .NET 10 SDK (para desenvolvimento local)
 
@@ -832,7 +791,7 @@ Via Ingress (requer entrada no `/etc/hosts` ou `C:\Windows\System32\drivers\etc\
 
 ```powershell
 # Na raiz do repositório
-.\scripts\ps\up-k8s.ps1
+.\infra\scripts\ps\up-k8s.ps1 -Build
 ```
 
 ### Configurar MCP no VS Code
@@ -851,13 +810,13 @@ Adicionar ao `.vscode/mcp.json`:
 
 Inicie os port-forwards antes de usar o MCP:
 ```powershell
-.\scripts\ps\port-forward.ps1
+.\infra\scripts\ps\port-forward.ps1
 ```
 
 ### Derrubar o ambiente
 
 ```powershell
-.\scripts\ps\down-k8s.ps1
+.\infra\scripts\ps\down-k8s.ps1
 ```
 
 ---

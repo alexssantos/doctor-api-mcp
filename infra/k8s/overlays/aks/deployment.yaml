@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcpserver
+  namespace: mcp-apis
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: mcpserver
+          image: mcpserver
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TMPDIR
+              value: /tmp
+            - name: Security__Authentication__ReaderApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: mcpserver-auth
+                  key: reader-api-key
+            - name: Security__Authentication__AdminApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: mcpserver-auth
+                  key: admin-api-key

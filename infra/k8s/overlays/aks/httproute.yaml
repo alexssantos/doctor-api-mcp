@@ -1,0 +1,27 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mcpserver
+  namespace: mcp-apis
+spec:
+  parentRefs:
+    # The platform team owns the TLS listener, DNS integration and controller.
+    # Replace these placeholders with the approved shared or dedicated Gateway.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform-gateway
+      namespace: gateway-system
+      sectionName: https
+  hostnames:
+    - mcpserver.example.invalid
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: mcpserver
+          port: 4000
+          weight: 1

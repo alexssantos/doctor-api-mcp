@@ -1,0 +1,6 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcpserver-ingress
+  namespace: mcp-apis
+$patch: delete

@@ -4,3 +4,5 @@ metadata:
   name: mcp-apis
   labels:
     name: mcp-apis
+    # Namespaces observed by the MCP must opt in to its NetworkPolicy egress.
+    observability.mcp-apis.io/allow: "true"

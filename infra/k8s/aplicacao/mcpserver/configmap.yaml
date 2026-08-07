@@ -4,7 +4,15 @@ metadata:
   name: mcpserver-config
   namespace: mcp-apis
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
+  # Local k3d profile only. The AKS overlay must enable authentication and
+  # source reader/admin keys from a managed Secret before it is rendered.
+  Security__Authentication__Enabled: "false"
+  Security__AllowedNamespaces__0: "mcp-apis"
+  Security__AllowedServiceHostSuffixes__0: ".svc.cluster.local"
+  Security__AllowedServicePorts__0: "80"
+  Security__AllowedServicePorts__1: "443"
+  Security__AllowedServicePorts__2: "8080"
   Otel__Endpoint: "http://jaeger.mcp-apis.svc.cluster.local:4317"
   Otel__CaptureBody: "false"
   # Data sources
@@ -12,6 +20,7 @@ data:
   # services in any namespace — not just the one the MCP Server lives in.
   DataSources__Jaeger__BaseUrl: "http://jaeger.mcp-apis.svc.cluster.local:16686"
   DataSources__Prometheus__BaseUrl: "http://prometheus.mcp-apis.svc.cluster.local:9090"
+  DataSources__Loki__BaseUrl: "http://loki.mcp-apis.svc.cluster.local:3100"
   DataSources__Kubernetes__Namespace: "mcp-apis"
   # OpenAPI spec paths probed in order — first 200 response wins
   DataSources__OpenApiSpecPaths__0: "/openapi/v1.json"
@@ -39,6 +48,10 @@ data:
   Discovery__ForgetAfterMinutes: "60"
   # ConfigMap that persists the per-application indexing toggle
   Discovery__StateConfigMap: "mcpserver-state"
+  # vNext production-safe surface. Raw PromQL/LogQL remains unavailable.
+  Observability__Features__EnableRawQueries: "false"
+  Observability__Features__EnableLogs: "true"
+  Observability__Features__EnableDeploymentEvents: "true"
   # Namespaces never scanned
   Discovery__ExcludeNamespaces__0: "kube-system"
   Discovery__ExcludeNamespaces__1: "kube-public"
@@ -57,7 +70,7 @@ data:
   # OTel service names ignored by discovery
   Discovery__ExcludeOtelServices__0: "jaeger-query"
   Discovery__ExcludeOtelServices__1: "McpServer"
-  # Dashboard quick-links -- browser-facing URLs (via k3d nginx ingress on host port 8080)
+  # Dashboard quick-links -- browser-facing URLs (via k3d Traefik on host port 8080)
   Dashboard__Links__Jaeger: "http://jaeger.local:8080"
   Dashboard__Links__Prometheus: "http://prometheus.local:8080"
   Dashboard__Links__Grafana: "http://grafana.local:8080"
