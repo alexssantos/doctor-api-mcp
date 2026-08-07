@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # setup-kubeconfig-link.sh — One-time setup: symlink WSL ~/.kube/config → Windows path
 #
 # After this, every k3d/kubectl write in WSL is instantly visible to Lens (and

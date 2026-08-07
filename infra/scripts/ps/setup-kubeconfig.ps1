@@ -1,8 +1,8 @@
 # setup-kubeconfig.ps1 — Configura symlink do kubeconfig WSL -> Windows (executar uma vez)
 #
 # Cria um symlink permanente de ~/.kube/config (WSL) apontando para
-# C:\Users\<user>\.kube\config, tornando o kubeconfig do k3d imediatamente
-# visivel para Lens e outras ferramentas Windows.
+# C:\Users\<user>\.kube\config e registra todos os clusters k3d existentes,
+# tornando-os visiveis para Lens e outras ferramentas Windows.
 #
 # Uso: .\scripts\ps\setup-kubeconfig.ps1
 #Requires -Version 5.1
@@ -23,9 +23,13 @@ Write-Host ""
 RunInWSL "bash $WSL_REPO/infra/scripts/sh/setup-kubeconfig-link.sh"
 
 if ($LASTEXITCODE -eq 0) {
+    RunInWSL "bash $WSL_REPO/infra/scripts/sh/sync-kubeconfig.sh --all"
+}
+
+if ($LASTEXITCODE -eq 0) {
     Write-Host ""
-    Write-Host "  [OK] Kubeconfig sincronizado com Windows (~/.kube/config)" -ForegroundColor Green
-    Write-Host "       Lens e outras ferramentas Windows ja podem usar o cluster." -ForegroundColor DarkGray
+    Write-Host "  [OK] Todos os clusters k3d foram registrados no kubeconfig do Windows." -ForegroundColor Green
+    Write-Host "       Lens e outras ferramentas Windows podem usar os contextos." -ForegroundColor DarkGray
 } else {
     Write-Host ""
     Write-Host "  [ERRO] Falha ao configurar symlink do kubeconfig." -ForegroundColor Red
