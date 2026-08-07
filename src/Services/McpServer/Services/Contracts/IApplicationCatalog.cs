@@ -1,5 +1,8 @@
 namespace McpApis.McpServer.Services.Contracts;
 
+using McpApis.McpServer.Domain.Models;
+using McpApis.McpServer.Domain.Contracts;
+
 /// <summary>
 /// Signals that contributed to discovering an application in the cluster.
 /// </summary>
@@ -43,6 +46,27 @@ public record DiscoveredApplication
     public string? OtelServiceName { get; init; }
     /// <summary>Resolved base URL; null for OTel-only applications.</summary>
     public string? BaseUrl { get; init; }
+    public IReadOnlyDictionary<string, string> Selector { get; init; } = new Dictionary<string, string>();
+    public string? Image { get; init; }
+    public string? ImageDigest { get; init; }
+    public string? Version { get; init; }
+    public string? Revision { get; init; }
+    public int DesiredReplicas { get; init; }
+    public int ReadyReplicas { get; init; }
+    public IReadOnlyDictionary<string, string> Labels { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> Annotations { get; init; } = new Dictionary<string, string>();
+    public string? Owner { get; init; }
+    public string? Team { get; init; }
+    public string? Description { get; init; }
+    public string? MetricsId { get; init; }
+    public IReadOnlyList<string> DeclaredDependencies { get; init; } = [];
+    public SignalCoverage Coverage { get; init; } = new(
+        SourceAvailability.Unavailable,
+        SourceAvailability.Unavailable,
+        SourceAvailability.Unavailable,
+        SourceAvailability.Unavailable,
+        SourceAvailability.Unavailable,
+        SourceAvailability.Unavailable);
     public bool HasReadyEndpoints { get; init; }
     public required OpenApiInfo OpenApi { get; init; }
     /// <summary>User toggle: whether MCP tools may fetch any data about this app.</summary>
@@ -52,6 +76,18 @@ public record DiscoveredApplication
     public DateTimeOffset FirstSeen { get; init; }
     public DateTimeOffset LastSeen { get; init; }
 }
+
+public enum CatalogResolutionStatus
+{
+    Resolved,
+    Unknown,
+    Ambiguous
+}
+
+public sealed record CatalogResolution(
+    CatalogResolutionStatus Status,
+    DiscoveredApplication? Application,
+    IReadOnlyList<DiscoveredApplication> Candidates);
 
 /// <summary>
 /// Thread-safe live inventory of applications discovered in the cluster.
@@ -63,6 +99,10 @@ public interface IApplicationCatalog
 
     /// <summary>Resolves by canonical name, deployment/service name or OTel service name (case-insensitive).</summary>
     bool TryGet(string nameOrAlias, out DiscoveredApplication app);
+
+    bool TryGet(string nameOrAlias, string namespaceName, out DiscoveredApplication app);
+
+    CatalogResolution Resolve(string nameOrAlias, string? namespaceName = null);
 
     string? ResolveCanonicalName(string nameOrAlias);
 
@@ -80,5 +120,5 @@ public interface IApplicationCatalog
     void ReplaceSnapshot(IReadOnlyList<DiscoveredApplication> apps, TimeSpan forgetAfter);
 
     /// <summary>Returns false when the app is unknown or locked by the mcp-apis/indexed=false label.</summary>
-    bool SetEnabled(string nameOrAlias, bool enabled);
+    bool SetEnabled(string nameOrAlias, bool enabled, string? namespaceName = null);
 }

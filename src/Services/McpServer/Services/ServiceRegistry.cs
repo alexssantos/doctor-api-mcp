@@ -17,9 +17,11 @@ public class ServiceRegistry : IServiceRegistry
     public IReadOnlyDictionary<string, ServiceEndpoint> GetAll() =>
         _catalog.GetAll()
             .Where(IsIndexable)
+            .GroupBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() == 1)
             .ToDictionary(
-                a => a.Name,
-                a => new ServiceEndpoint(a.BaseUrl!.TrimEnd('/'), a.OpenApi.Path!),
+                g => g.Key,
+                g => new ServiceEndpoint(g.Single().BaseUrl!.TrimEnd('/'), g.Single().OpenApi.Path!),
                 StringComparer.OrdinalIgnoreCase);
 
     public bool TryGet(string serviceName, out ServiceEndpoint endpoint)

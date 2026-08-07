@@ -11,34 +11,65 @@ public class ApplicationCatalog : IApplicationCatalog
 {
     private readonly object _gate = new();
     private volatile IReadOnlyList<DiscoveredApplication> _snapshot = [];
-    private volatile Dictionary<string, string> _aliasIndex = new(StringComparer.Ordinal);
+    private volatile Dictionary<string, string[]> _aliasIndex = new(StringComparer.Ordinal);
 
     public IReadOnlyList<DiscoveredApplication> GetAll() => _snapshot;
 
     public bool TryGet(string nameOrAlias, out DiscoveredApplication app)
     {
-        var canonical = ResolveCanonicalName(nameOrAlias);
-        if (canonical is not null)
-        {
-            var match = _snapshot.FirstOrDefault(a =>
-                a.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase));
-            if (match is not null)
-            {
-                app = match;
-                return true;
-            }
-        }
+        var resolution = Resolve(nameOrAlias);
+        app = resolution.Application!;
+        return resolution.Status == CatalogResolutionStatus.Resolved;
+    }
 
-        app = null!;
-        return false;
+    public bool TryGet(string nameOrAlias, string namespaceName, out DiscoveredApplication app)
+    {
+        var resolution = Resolve(nameOrAlias, namespaceName);
+        app = resolution.Application!;
+        return resolution.Status == CatalogResolutionStatus.Resolved;
     }
 
     public string? ResolveCanonicalName(string nameOrAlias)
     {
-        var key = NameNormalizer.Normalize(nameOrAlias);
-        return key.Length > 0 && _aliasIndex.TryGetValue(key, out var canonical)
-            ? canonical
+        var resolution = Resolve(nameOrAlias);
+        return resolution.Status == CatalogResolutionStatus.Resolved
+            ? resolution.Application!.Name
             : null;
+    }
+
+    public CatalogResolution Resolve(string nameOrAlias, string? namespaceName = null)
+    {
+        if (string.IsNullOrWhiteSpace(nameOrAlias))
+            return new CatalogResolution(CatalogResolutionStatus.Unknown, null, []);
+
+        if (namespaceName is null && nameOrAlias.Contains('/', StringComparison.Ordinal))
+        {
+            var parts = nameOrAlias.Split('/', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2)
+            {
+                namespaceName = parts[0];
+                nameOrAlias = parts[1];
+            }
+        }
+
+        var alias = NameNormalizer.Normalize(nameOrAlias);
+        if (alias.Length == 0 || !_aliasIndex.TryGetValue(alias, out var keys))
+            return new CatalogResolution(CatalogResolutionStatus.Unknown, null, []);
+
+        var matches = _snapshot
+            .Where(a => keys.Contains(CatalogKey(a), StringComparer.OrdinalIgnoreCase))
+            .Where(a => namespaceName is null ||
+                        string.Equals(a.Namespace, namespaceName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(a => a.Namespace, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return matches.Length switch
+        {
+            0 => new CatalogResolution(CatalogResolutionStatus.Unknown, null, []),
+            1 => new CatalogResolution(CatalogResolutionStatus.Resolved, matches[0], matches),
+            _ => new CatalogResolution(CatalogResolutionStatus.Ambiguous, null, matches)
+        };
     }
 
     public bool IsEnabled(string nameOrAlias) =>
@@ -48,12 +79,14 @@ public class ApplicationCatalog : IApplicationCatalog
     {
         lock (_gate)
         {
-            var previous = _snapshot.ToDictionary(a => a.Name, StringComparer.OrdinalIgnoreCase);
+            var previous = _snapshot
+                .GroupBy(CatalogKey, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
             var merged = new List<DiscoveredApplication>(apps.Count);
 
             foreach (var incoming in apps)
             {
-                if (previous.Remove(incoming.Name, out var existing))
+                if (previous.Remove(CatalogKey(incoming), out var existing))
                 {
                     // Preserve FirstSeen and the user's latest toggle; the label
                     // hard-off from the fresh scan always wins.
@@ -74,23 +107,28 @@ public class ApplicationCatalog : IApplicationCatalog
             var cutoff = DateTimeOffset.UtcNow - forgetAfter;
             merged.AddRange(previous.Values.Where(a => a.LastSeen >= cutoff));
 
-            Install(merged);
+            Install(merged
+                .OrderBy(a => a.Namespace, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList());
         }
     }
 
-    public bool SetEnabled(string nameOrAlias, bool enabled)
+    public bool SetEnabled(string nameOrAlias, bool enabled, string? namespaceName = null)
     {
         lock (_gate)
         {
-            var canonical = ResolveCanonicalName(nameOrAlias);
-            if (canonical is null)
+            var resolution = Resolve(nameOrAlias, namespaceName);
+            if (resolution.Status != CatalogResolutionStatus.Resolved)
                 return false;
+
+            var targetKey = CatalogKey(resolution.Application!);
 
             var updated = new List<DiscoveredApplication>(_snapshot.Count);
             var changed = false;
             foreach (var app in _snapshot)
             {
-                if (app.Name.Equals(canonical, StringComparison.OrdinalIgnoreCase))
+                if (CatalogKey(app).Equals(targetKey, StringComparison.OrdinalIgnoreCase))
                 {
                     if (app.LockedDisabled)
                         return false;
@@ -112,18 +150,36 @@ public class ApplicationCatalog : IApplicationCatalog
     /// <summary>Swaps the snapshot and rebuilds the alias → canonical name index. Callers hold the lock.</summary>
     private void Install(List<DiscoveredApplication> apps)
     {
-        var index = new Dictionary<string, string>(StringComparer.Ordinal);
+        var index = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var app in apps)
         {
-            foreach (var alias in new[] { app.Name, app.DeploymentName, app.KubernetesServiceName, app.OtelServiceName })
+            var appKey = CatalogKey(app);
+            foreach (var alias in new[]
+                     {
+                         app.Name, app.DeploymentName, app.KubernetesServiceName,
+                         app.OtelServiceName, $"{app.Namespace}/{app.Name}"
+                     })
             {
                 var key = NameNormalizer.Normalize(alias);
                 if (key.Length > 0)
-                    index.TryAdd(key, app.Name);
+                {
+                    if (!index.TryGetValue(key, out var matches))
+                    {
+                        matches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        index[key] = matches;
+                    }
+                    matches.Add(appKey);
+                }
             }
         }
 
-        _aliasIndex = index;
+        _aliasIndex = index.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+            StringComparer.Ordinal);
         _snapshot = apps;
     }
+
+    private static string CatalogKey(DiscoveredApplication app) =>
+        $"{app.Namespace ?? "~"}/{app.Name}";
 }

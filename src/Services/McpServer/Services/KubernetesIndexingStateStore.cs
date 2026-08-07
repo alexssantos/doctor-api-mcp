@@ -34,7 +34,7 @@ public class KubernetesIndexingStateStore : IIndexingStateStore
     {
         try
         {
-            var data = await _k8s.GetConfigMapDataAsync(_configMapName);
+            var data = await _k8s.GetConfigMapDataAsync(_configMapName, ct);
             if (data is null)
             {
                 _logger.LogWarning(
@@ -67,7 +67,7 @@ public class KubernetesIndexingStateStore : IIndexingStateStore
         {
             _memoryFallback[appName] = enabled;
 
-            var data = await _k8s.GetConfigMapDataAsync(_configMapName);
+            var data = await _k8s.GetConfigMapDataAsync(_configMapName, ct);
             if (data is null)
             {
                 _logger.LogWarning(
@@ -80,7 +80,7 @@ public class KubernetesIndexingStateStore : IIndexingStateStore
             overrides[appName] = enabled;
             data[DataKey] = JsonSerializer.Serialize(overrides);
 
-            await _k8s.ReplaceConfigMapDataAsync(_configMapName, data);
+            await _k8s.ReplaceConfigMapDataAsync(_configMapName, data, ct);
             return true;
         }
         catch (Exception ex)

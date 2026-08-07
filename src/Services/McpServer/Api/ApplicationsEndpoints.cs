@@ -1,6 +1,7 @@
 using McpApis.McpServer.Services;
 using McpApis.McpServer.Services.Contracts;
 using McpApis.McpServer.Tools;
+using McpApis.McpServer.Infrastructure.Security;
 
 namespace McpApis.McpServer.Api;
 
@@ -11,11 +12,13 @@ namespace McpApis.McpServer.Api;
 /// </summary>
 public static class ApplicationsEndpoints
 {
-    public record IndexingRequest(bool Enabled);
+    public record IndexingRequest(bool Enabled, string? Namespace = null);
 
     public static IEndpointRouteBuilder MapApplicationsApi(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/dashboard");
+        group.RequireAuthorization(ObservabilityPolicies.Admin)
+            .RequireRateLimiting(ObservabilityPolicies.RateLimit);
 
         group.MapGet("/applications", async (
             IApplicationCatalog catalog,
@@ -84,8 +87,17 @@ public static class ApplicationsEndpoints
             IIndexingStateStore stateStore,
             IDiscoveryOrchestrator orchestrator) =>
         {
-            if (!catalog.TryGet(name, out var app))
+            var resolution = catalog.Resolve(name, request.Namespace);
+            if (resolution.Status == CatalogResolutionStatus.Unknown)
                 return Results.NotFound(new { error = $"Unknown application: {name}" });
+            if (resolution.Status == CatalogResolutionStatus.Ambiguous)
+                return Results.Conflict(new
+                {
+                    code = "ambiguous_service",
+                    error = $"Application '{name}' exists in multiple namespaces.",
+                    candidates = resolution.Candidates.Select(a => $"{a.Namespace}/{a.Name}")
+                });
+            var app = resolution.Application!;
 
             if (app.LockedDisabled)
                 return Results.Conflict(new
@@ -94,14 +106,21 @@ public static class ApplicationsEndpoints
                     hint = "Remove the label (or set it to true) and wait for the next discovery scan to unlock the toggle."
                 });
 
-            var persisted = await stateStore.SaveAsync(app.Name, request.Enabled);
-            catalog.SetEnabled(app.Name, request.Enabled);
+            var stateKey = $"{app.Namespace ?? "~"}/{app.Name}";
+            var persisted = await stateStore.SaveAsync(stateKey, request.Enabled);
+            catalog.SetEnabled(app.Name, request.Enabled, app.Namespace);
 
             // A freshly enabled app that never passed validation gets probed right away.
             if (request.Enabled && !app.OpenApi.Validated && app.BaseUrl is not null)
                 orchestrator.RequestRescan();
 
-            return Results.Ok(new { name = app.Name, enabled = request.Enabled, persisted });
+            return Results.Ok(new
+            {
+                name = app.Name,
+                @namespace = app.Namespace,
+                enabled = request.Enabled,
+                persisted
+            });
         });
 
         group.MapPost("/discovery/rescan", (IDiscoveryOrchestrator orchestrator) =>

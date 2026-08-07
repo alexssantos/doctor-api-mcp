@@ -1,4 +1,8 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Options;
+using McpApis.McpServer.Domain.Contracts;
+using McpApis.McpServer.Domain.Models;
+using McpApis.McpServer.Infrastructure.Options;
 using McpApis.McpServer.Services.Contracts;
 
 namespace McpApis.McpServer.Services;
@@ -30,8 +34,10 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
     private readonly IKubernetesCollector _k8s;
     private readonly IApplicationCatalog _catalog;
     private readonly IIndexingStateStore _stateStore;
+    private readonly IDeploymentHistoryStore _deploymentHistory;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DiscoveryOrchestrator> _logger;
+    private readonly SecurityOptions _security;
 
     private readonly SemaphoreSlim _scanLock = new(1, 1);
     private readonly Channel<bool> _rescanSignal = Channel.CreateBounded<bool>(
@@ -47,14 +53,18 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         IKubernetesCollector k8s,
         IApplicationCatalog catalog,
         IIndexingStateStore stateStore,
+        IDeploymentHistoryStore deploymentHistory,
         IServiceScopeFactory scopeFactory,
+        IOptions<SecurityOptions> security,
         ILogger<DiscoveryOrchestrator> logger)
     {
         _config = config;
         _k8s = k8s;
         _catalog = catalog;
         _stateStore = stateStore;
+        _deploymentHistory = deploymentHistory;
         _scopeFactory = scopeFactory;
+        _security = security.Value;
         _logger = logger;
     }
 
@@ -87,19 +97,27 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         _logger.LogInformation("Discovery scan starting (mode: {Mode})...", mode);
 
         var candidates = mode.Equals("Auto", StringComparison.OrdinalIgnoreCase)
-            ? await CollectAutoAsync(warnings)
-            : await CollectLegacyAsync(mode, warnings);
+            ? await CollectAutoAsync(warnings, ct)
+            : await CollectLegacyAsync(mode, warnings, ct);
 
         await ValidateOpenApiAsync(candidates, ct);
         await ApplyIndexingStateAsync(candidates, ct);
 
         var apps = candidates
-            .Select(c => c.ToApplication(now))
+            .Select(c => c.ToApplication(
+                now,
+                GetList("Discovery:AllowedLabels",
+                    ["app", "app.kubernetes.io/name", "app.kubernetes.io/version", "app.kubernetes.io/part-of"]),
+                GetList("Discovery:AllowedAnnotations",
+                    ["mcp-apis/owner", "mcp-apis/team", "mcp-apis/description", "mcp-apis/metrics-id",
+                     "mcp-apis/metrics-enabled", "mcp-apis/logs-enabled", "mcp-apis/dependencies",
+                     "app.kubernetes.io/version", "deployment.kubernetes.io/revision"])))
             .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var forgetAfter = TimeSpan.FromMinutes(GetInt("Discovery:ForgetAfterMinutes", 60));
         _catalog.ReplaceSnapshot(apps, forgetAfter);
+        await _deploymentHistory.ObserveAsync(_catalog.GetAll(), now, ct);
         LastScanCompletedAt = DateTimeOffset.UtcNow;
 
         foreach (var warning in warnings)
@@ -133,9 +151,14 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
     // ── Auto mode: cluster-wide correlation ────────────────────────────────────
 
-    private async Task<List<AppCandidate>> CollectAutoAsync(List<string> warnings)
+    private async Task<List<AppCandidate>> CollectAutoAsync(
+        List<string> warnings,
+        CancellationToken cancellationToken)
     {
         var excludeNamespaces = GetList("Discovery:ExcludeNamespaces", DefaultExcludeNamespaces);
+        var allowedNamespaces = _security.AllowedNamespaces
+            .Where(ns => !excludeNamespaces.Contains(ns))
+            .ToArray();
         var excludeApps = GetList("Discovery:ExcludeApps", DefaultExcludeApps)
             .Select(NameNormalizer.Normalize)
             .ToHashSet(StringComparer.Ordinal);
@@ -146,13 +169,11 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
         try
         {
-            deployments = (await _k8s.ListDeploymentDetailsAllNamespacesAsync())
-                .Where(d => !excludeNamespaces.Contains(d.Namespace)
-                            && !excludeApps.Contains(NameNormalizer.Normalize(d.Name)))
+            deployments = (await _k8s.ListDeploymentDetailsAsync(allowedNamespaces, cancellationToken))
+                .Where(d => !excludeApps.Contains(NameNormalizer.Normalize(d.Name)))
                 .ToList();
-            services = (await _k8s.ListServiceDetailsAllNamespacesAsync())
-                .Where(s => !excludeNamespaces.Contains(s.Namespace)
-                            && !excludeApps.Contains(NameNormalizer.Normalize(s.Name)))
+            services = (await _k8s.ListServiceDetailsAsync(allowedNamespaces, cancellationToken))
+                .Where(s => !excludeApps.Contains(NameNormalizer.Normalize(s.Name)))
                 .ToList();
         }
         catch (Exception ex)
@@ -162,7 +183,8 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
         try
         {
-            readyEndpoints = await _k8s.ListServicesWithReadyEndpointsAsync();
+            readyEndpoints = await _k8s.ListServicesWithReadyEndpointsAsync(
+                allowedNamespaces, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -179,6 +201,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
                 CanonicalKey = NameNormalizer.Normalize(deployment.Name),
                 Namespace = deployment.Namespace,
                 DeploymentName = deployment.Name,
+                Deployment = deployment,
                 Sources = DiscoverySources.Deployment
             });
         }
@@ -188,8 +211,8 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             var owners = candidates
                 .Where(c => c.DeploymentName is not null
                             && c.Namespace == service.Namespace
-                            && SelectorMatches(service.Selector, deployments.First(d =>
-                                d.Name == c.DeploymentName && d.Namespace == c.Namespace).TemplateLabels))
+                            && c.Deployment is not null
+                            && SelectorMatches(service.Selector, c.Deployment.TemplateLabels))
                 .ToList();
 
             if (owners.Count == 0)
@@ -225,11 +248,12 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             }
         }
 
-        // 2. Merge same key within a namespace; disambiguate collisions across namespaces.
-        candidates = MergeAndDisambiguate(candidates, warnings);
+        // 2. Merge only within the same namespace. Cross-namespace names remain
+        // distinct and are resolved as ambiguous unless the caller supplies ns.
+        candidates = MergeWithinNamespace(candidates, warnings);
 
         // 3. OTel: attach Jaeger service names, or create OTel-only candidates.
-        await AttachOtelAsync(candidates, excludeApps, warnings);
+        await AttachOtelAsync(candidates, excludeApps, warnings, cancellationToken);
 
         // 4. Config entries reinforce (and default-enable) matching apps or add config-only ones.
         AttachConfigEntries(candidates, warnings);
@@ -261,7 +285,10 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
     }
 
     private async Task AttachOtelAsync(
-        List<AppCandidate> candidates, HashSet<string> excludeApps, List<string> warnings)
+        List<AppCandidate> candidates,
+        HashSet<string> excludeApps,
+        List<string> warnings,
+        CancellationToken cancellationToken)
     {
         var excludeOtel = GetList("Discovery:ExcludeOtelServices", DefaultExcludeOtelServices)
             .Select(NameNormalizer.Normalize)
@@ -272,7 +299,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         {
             using var scope = _scopeFactory.CreateScope();
             var jaeger = scope.ServiceProvider.GetRequiredService<IJaegerCollector>();
-            otelServices = await jaeger.GetServicesAsync();
+            otelServices = await jaeger.GetServicesAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -287,23 +314,38 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
                 continue;
 
             // Annotation override wins over name normalization.
-            var match = candidates.FirstOrDefault(c =>
+            var annotated = candidates.Where(c =>
                     c.Service?.Annotations.GetValueOrDefault("mcp-apis/otel-service-name") == otelName)
-                ?? candidates.FirstOrDefault(c => c.CanonicalKey == normalized);
+                .ToArray();
+            var normalizedMatches = candidates.Where(c => c.CanonicalKey == normalized).ToArray();
+            var matches = annotated.Length > 0 ? annotated : normalizedMatches;
 
-            if (match is not null)
+            if (matches.Length == 1)
             {
+                var match = matches[0];
                 match.OtelServiceName = otelName;
                 match.Sources |= DiscoverySources.OpenTelemetry;
             }
-            else
+            else if (matches.Length > 1)
+            {
+                warnings.Add(
+                    $"OTel service '{otelName}' matches multiple namespaces " +
+                    $"({string.Join(", ", matches.Select(m => m.Namespace))}); add mcp-apis/otel-service-name explicitly.");
+            }
+            else if (_security.AllowedNamespaces.Length == 1)
             {
                 candidates.Add(new AppCandidate
                 {
                     CanonicalKey = normalized,
+                    Namespace = _security.AllowedNamespaces[0],
                     OtelServiceName = otelName,
                     Sources = DiscoverySources.OpenTelemetry
                 });
+            }
+            else
+            {
+                warnings.Add(
+                    $"OTel-only service '{otelName}' has no namespace identity and was ignored in multi-namespace mode.");
             }
         }
     }
@@ -313,7 +355,12 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         foreach (var (alias, url) in ReadConfigServices(warnings))
         {
             var normalized = NameNormalizer.Normalize(alias);
-            var match = candidates.FirstOrDefault(c => c.CanonicalKey == normalized);
+            var namespaceFromUrl = TryGetNamespaceFromClusterUrl(url);
+            var matching = candidates.Where(c => c.CanonicalKey == normalized)
+                .Where(c => namespaceFromUrl is null ||
+                            c.Namespace?.Equals(namespaceFromUrl, StringComparison.OrdinalIgnoreCase) == true)
+                .ToArray();
+            var match = matching.Length == 1 ? matching[0] : null;
             if (match is not null)
             {
                 match.Sources |= DiscoverySources.Config;
@@ -324,7 +371,9 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             {
                 candidates.Add(new AppCandidate
                 {
-                    CanonicalKey = alias,
+                    CanonicalKey = normalized,
+                    Namespace = namespaceFromUrl ??
+                                (_security.AllowedNamespaces.Length == 1 ? _security.AllowedNamespaces[0] : null),
                     Sources = DiscoverySources.Config,
                     ConfigUrl = url,
                     BaseUrl = url,
@@ -334,40 +383,30 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         }
     }
 
-    private static List<AppCandidate> MergeAndDisambiguate(
+    private static List<AppCandidate> MergeWithinNamespace(
         List<AppCandidate> candidates, List<string> warnings)
     {
-        var result = new List<AppCandidate>();
-        foreach (var group in candidates.GroupBy(c => c.CanonicalKey, StringComparer.Ordinal))
+        var result = candidates
+            .GroupBy(c => $"{c.Namespace ?? "~"}/{c.CanonicalKey}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Aggregate((a, b) => a.MergeWith(b)))
+            .ToList();
+
+        foreach (var group in result.GroupBy(c => c.CanonicalKey, StringComparer.Ordinal))
         {
-            var byNamespace = group
-                .GroupBy(c => c.Namespace ?? "", StringComparer.OrdinalIgnoreCase)
-                .Select(nsGroup => nsGroup.Aggregate((a, b) => a.MergeWith(b)))
-                .ToList();
-
-            if (byNamespace.Count == 1)
-            {
-                result.Add(byNamespace[0]);
-                continue;
-            }
-
-            warnings.Add(
-                $"Application name '{group.Key}' exists in multiple namespaces " +
-                $"({string.Join(", ", byNamespace.Select(c => c.Namespace))}); " +
-                "using namespace-suffixed canonical names.");
-
-            foreach (var candidate in byNamespace)
-            {
-                candidate.CanonicalKey = $"{candidate.CanonicalKey}-{candidate.Namespace}";
-                result.Add(candidate);
-            }
+            if (group.Count() > 1)
+                warnings.Add(
+                    $"Application name '{group.Key}' exists in multiple namespaces " +
+                    $"({string.Join(", ", group.Select(c => c.Namespace))}); callers must supply namespace.");
         }
         return result;
     }
 
     // ── Legacy modes (feature 003 semantics) ───────────────────────────────────
 
-    private async Task<List<AppCandidate>> CollectLegacyAsync(string mode, List<string> warnings)
+    private async Task<List<AppCandidate>> CollectLegacyAsync(
+        string mode,
+        List<string> warnings,
+        CancellationToken cancellationToken)
     {
         var merged = new Dictionary<string, AppCandidate>(StringComparer.OrdinalIgnoreCase);
 
@@ -378,6 +417,8 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
                 merged[alias] = new AppCandidate
                 {
                     CanonicalKey = alias,
+                    Namespace = TryGetNamespaceFromClusterUrl(url) ??
+                                (_security.AllowedNamespaces.Length == 1 ? _security.AllowedNamespaces[0] : null),
                     Sources = DiscoverySources.Config,
                     BaseUrl = url,
                     DefaultEnabled = true
@@ -390,11 +431,13 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             var labelKey = _config["Discovery:KubernetesLabel"] ?? "mcp-apis/indexed";
             try
             {
-                foreach (var (name, url) in await _k8s.DiscoverIndexedServicesAsync(labelKey))
+                foreach (var (name, url) in await _k8s.DiscoverIndexedServicesAsync(
+                             labelKey, cancellationToken))
                 {
                     merged[name] = new AppCandidate
                     {
                         CanonicalKey = name,
+                        Namespace = _security.AllowedNamespaces.FirstOrDefault(),
                         KubernetesServiceNameOverride = name,
                         Sources = DiscoverySources.Network,
                         BaseUrl = url,
@@ -442,7 +485,8 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             .Where(c => c.BaseUrl is not null)
             .Select(async candidate =>
             {
-                if (_validationCache.TryGetValue(candidate.CanonicalKey, out var cached)
+                var cacheKey = candidate.IdentityKey;
+                if (_validationCache.TryGetValue(cacheKey, out var cached)
                     && cached.BaseUrl == candidate.BaseUrl
                     && cached.Info.Validated
                     && DateTimeOffset.UtcNow - cached.At < revalidateAfter)
@@ -454,17 +498,18 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
                 await throttle.WaitAsync(ct);
                 try
                 {
-                    var result = await validator.ValidateAsync(candidate.CanonicalKey, candidate.BaseUrl!);
+                    var result = await validator.ValidateAsync(
+                        candidate.CanonicalKey, candidate.BaseUrl!, candidate.Namespace, ct);
                     candidate.OpenApi = new OpenApiInfo(
                         result.IsValid,
                         result.IsValid ? result.OpenApiPath : null,
                         result.Failures);
 
                     if (result.IsValid)
-                        _validationCache[candidate.CanonicalKey] =
+                        _validationCache[cacheKey] =
                             (candidate.BaseUrl!, DateTimeOffset.UtcNow, candidate.OpenApi);
                     else
-                        _validationCache.Remove(candidate.CanonicalKey);
+                        _validationCache.Remove(cacheKey);
                 }
                 catch (Exception ex)
                 {
@@ -485,7 +530,8 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         foreach (var candidate in candidates)
         {
             var enabledByDefault = candidate.DefaultEnabled;
-            var userChoice = overrides.TryGetValue(candidate.CanonicalKey, out var choice)
+            var userChoice = overrides.TryGetValue(candidate.IdentityKey, out var choice) ||
+                             overrides.TryGetValue(candidate.CanonicalKey, out choice)
                 ? choice
                 : (bool?)null;
             candidate.Enabled = !candidate.LockedDisabled && (userChoice ?? enabledByDefault);
@@ -510,12 +556,24 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
     private int GetInt(string key, int fallback) =>
         int.TryParse(_config[key], out var value) ? value : fallback;
 
+    private static string? TryGetNamespaceFromClusterUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            return null;
+        var labels = uri.DnsSafeHost.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var svcIndex = Array.FindIndex(labels, label =>
+            label.Equals("svc", StringComparison.OrdinalIgnoreCase));
+        return svcIndex > 0 ? labels[svcIndex - 1] : null;
+    }
+
     /// <summary>Mutable working entry for a single application while a scan assembles its sources.</summary>
     private class AppCandidate
     {
         public required string CanonicalKey { get; set; }
+        public string IdentityKey => $"{Namespace ?? "~"}/{CanonicalKey}";
         public string? Namespace { get; set; }
         public string? DeploymentName { get; set; }
+        public DeploymentDetail? Deployment { get; set; }
         public ServiceDetail? Service { get; set; }
         public string? KubernetesServiceNameOverride { get; set; }
         public string? OtelServiceName { get; set; }
@@ -532,6 +590,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         {
             Sources |= other.Sources;
             DeploymentName ??= other.DeploymentName;
+            Deployment ??= other.Deployment;
             Service ??= other.Service;
             OtelServiceName ??= other.OtelServiceName;
             ConfigUrl ??= other.ConfigUrl;
@@ -540,21 +599,98 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
             return this;
         }
 
-        public DiscoveredApplication ToApplication(DateTimeOffset now) => new()
+        public DiscoveredApplication ToApplication(
+            DateTimeOffset now,
+            IReadOnlySet<string> allowedLabels,
+            IReadOnlySet<string> allowedAnnotations)
         {
-            Name = CanonicalKey,
-            Namespace = Namespace,
-            Sources = Sources,
-            DeploymentName = DeploymentName,
-            KubernetesServiceName = Service?.Name ?? KubernetesServiceNameOverride,
-            OtelServiceName = OtelServiceName,
-            BaseUrl = BaseUrl?.TrimEnd('/'),
-            HasReadyEndpoints = HasReadyEndpoints,
-            OpenApi = OpenApi,
-            Enabled = Enabled,
-            LockedDisabled = LockedDisabled,
-            FirstSeen = now,
-            LastSeen = now
-        };
+            var labels = MergeMetadata(Deployment?.Labels, Service?.Labels)
+                .Where(kv => allowedLabels.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+            var annotations = MergeMetadata(Deployment?.Annotations, Service?.Annotations)
+                .Where(kv => allowedAnnotations.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+            var version = annotations.GetValueOrDefault("app.kubernetes.io/version") ??
+                          labels.GetValueOrDefault("app.kubernetes.io/version") ??
+                          ExtractImageTag(Deployment?.Image);
+            var dependencies = annotations.GetValueOrDefault("mcp-apis/dependencies")?
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? [];
+            var hasKubernetes = Deployment is not null || Service is not null;
+            var metricsEnabled = annotations.GetValueOrDefault("mcp-apis/metrics-enabled")
+                ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+            var logsEnabled = hasKubernetes &&
+                              annotations.GetValueOrDefault("mcp-apis/logs-enabled")
+                                  ?.Equals("false", StringComparison.OrdinalIgnoreCase) != true;
+
+            return new DiscoveredApplication
+            {
+                Name = CanonicalKey,
+                Namespace = Namespace,
+                Sources = Sources,
+                DeploymentName = DeploymentName,
+                KubernetesServiceName = Service?.Name ?? KubernetesServiceNameOverride,
+                OtelServiceName = OtelServiceName,
+                MetricsId = annotations.GetValueOrDefault("mcp-apis/metrics-id") ?? CanonicalKey,
+                BaseUrl = BaseUrl?.TrimEnd('/'),
+                Selector = Service?.Selector is { Count: > 0 }
+                    ? new Dictionary<string, string>(Service.Selector)
+                    : Deployment?.Selector is { Count: > 0 }
+                        ? new Dictionary<string, string>(Deployment.Selector)
+                        : new Dictionary<string, string>(),
+                Image = Deployment?.Image,
+                Version = version,
+                Revision = Deployment?.Revision,
+                DesiredReplicas = Deployment?.Replicas ?? 0,
+                ReadyReplicas = Deployment?.ReadyReplicas ?? 0,
+                Labels = labels,
+                Annotations = annotations,
+                Owner = annotations.GetValueOrDefault("mcp-apis/owner"),
+                Team = annotations.GetValueOrDefault("mcp-apis/team"),
+                Description = annotations.GetValueOrDefault("mcp-apis/description"),
+                DeclaredDependencies = dependencies,
+                Coverage = new SignalCoverage(
+                    hasKubernetes ? SourceAvailability.Available : SourceAvailability.Unavailable,
+                    metricsEnabled ? SourceAvailability.Available : SourceAvailability.Unavailable,
+                    Sources.HasFlag(DiscoverySources.OpenTelemetry)
+                        ? SourceAvailability.Available : SourceAvailability.Unavailable,
+                    logsEnabled ? SourceAvailability.Available : SourceAvailability.Unavailable,
+                    OpenApi.Validated ? SourceAvailability.Available : SourceAvailability.Unavailable,
+                    hasKubernetes ? SourceAvailability.Available : SourceAvailability.Unavailable),
+                HasReadyEndpoints = HasReadyEndpoints,
+                OpenApi = OpenApi,
+                Enabled = Enabled,
+                LockedDisabled = LockedDisabled,
+                FirstSeen = now,
+                LastSeen = now
+            };
+        }
+
+        private static Dictionary<string, string> MergeMetadata(
+            IReadOnlyDictionary<string, string>? first,
+            IReadOnlyDictionary<string, string>? second)
+        {
+            var result = first is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(first, StringComparer.Ordinal);
+            if (second is not null)
+            {
+                foreach (var (key, value) in second)
+                    result[key] = value;
+            }
+            return result;
+        }
+
+        private static string? ExtractImageTag(string? image)
+        {
+            if (string.IsNullOrWhiteSpace(image))
+                return null;
+            var digestIndex = image.IndexOf('@');
+            var withoutDigest = digestIndex >= 0 ? image[..digestIndex] : image;
+            var colon = withoutDigest.LastIndexOf(':');
+            var slash = withoutDigest.LastIndexOf('/');
+            return colon > slash ? withoutDigest[(colon + 1)..] : null;
+        }
     }
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using McpApis.McpServer.Services.Contracts;
+using McpApis.McpServer.Infrastructure.Security;
 using ModelContextProtocol.Server;
 
 namespace McpApis.McpServer.Tools;
@@ -10,8 +11,19 @@ public class ListDiscoveredApplicationsTool
 {
     [McpServerTool(Name = "list_discovered_applications"),
      Description("Lists every application auto-discovered in the cluster via deployments, network (services/endpoints) and OpenTelemetry traces — including disabled ones and why an app may not be indexable.")]
-    public static string Execute(IApplicationCatalog catalog)
+    public static string Execute(
+        IApplicationCatalog catalog,
+        IHttpContextAccessor httpContextAccessor)
     {
+        if (httpContextAccessor.HttpContext?.User.IsInRole(ObservabilityPolicies.Admin) != true)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = "administrator_required",
+                message = "The complete discovered-application inventory requires ObservabilityAdmin."
+            });
+        }
+
         var apps = catalog.GetAll().Select(a => new
         {
             name = a.Name,
@@ -21,6 +33,16 @@ public class ListDiscoveredApplicationsTool
             kubernetesServiceName = a.KubernetesServiceName,
             otelServiceName = a.OtelServiceName,
             baseUrl = a.BaseUrl,
+            selector = a.Selector,
+            image = a.Image,
+            imageDigest = a.ImageDigest,
+            version = a.Version,
+            revision = a.Revision,
+            desiredReplicas = a.DesiredReplicas,
+            readyReplicas = a.ReadyReplicas,
+            owner = a.Owner,
+            team = a.Team,
+            coverage = a.Coverage,
             hasReadyEndpoints = a.HasReadyEndpoints,
             openApi = new
             {
