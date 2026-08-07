@@ -3,7 +3,8 @@ replicaCount: 2
 image:
   repository: alexssantos/doctor-api-mcp
   pullPolicy: IfNotPresent
-  tag: "latest"
+  # Empty means the chart appVersion, keeping image and chart releases pinned.
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: "doctor-api-mcp"

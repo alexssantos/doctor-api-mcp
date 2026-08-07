@@ -27,7 +27,7 @@ const INSTALL_OPTIONS = [
     id: 'helm',
     label: 'Helm',
     icon: PackageOpen,
-    command: 'helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.0 -n mcp-apis --create-namespace',
+    command: 'helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.1 -n mcp-apis --create-namespace',
     detail: 'Ideal para GitOps e clusters com valores próprios de observabilidade.',
   },
 ] as const

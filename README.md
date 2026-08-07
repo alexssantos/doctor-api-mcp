@@ -43,7 +43,7 @@ irm https://raw.githubusercontent.com/alexssantos/doctor-api-mcp/master/install.
 **Helm:**
 
 ```bash
-helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.0 -n mcp-apis --create-namespace
+helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.1 -n mcp-apis --create-namespace
 ```
 
 Depois, abra o acesso local:

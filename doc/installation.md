@@ -40,7 +40,7 @@ Se `helm` e `kubectl` não estiverem no PATH do Windows, o instalador os procura
 ### Helm via OCI
 
 ```bash
-helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.0 --namespace mcp-apis --create-namespace
+helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.1 --namespace mcp-apis --create-namespace
 ```
 
 O chart também pode ser instalado diretamente a partir do clone:
@@ -100,7 +100,7 @@ security:
 Instale ou atualize:
 
 ```bash
-helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.0 -n mcp-apis --create-namespace -f values-production.yaml
+helm upgrade --install doctor-api-mcp oci://registry-1.docker.io/alexssantos/doctor-api-mcp-chart --version 0.1.1 -n mcp-apis --create-namespace -f values-production.yaml
 ```
 
 ## Autenticação para ambientes expostos
@@ -155,4 +155,4 @@ O workflow `.github/workflows/docker-publish.yml` publica:
 - tags SemVer e `sha-<commit>` em releases `v*`;
 - o chart OCI `alexssantos/doctor-api-mcp-chart` em tags `v*`.
 
-Configure os secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` no GitHub e mantenha os repositórios `doctor-api-mcp` e `doctor-api-mcp-chart` públicos no Docker Hub. Uma tag como `v0.1.0` publica imagem e chart com a mesma versão.
+Configure os secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` no GitHub e mantenha os repositórios `doctor-api-mcp` e `doctor-api-mcp-chart` públicos no Docker Hub. Uma tag como `v0.1.1` publica imagem e chart com a mesma versão.
