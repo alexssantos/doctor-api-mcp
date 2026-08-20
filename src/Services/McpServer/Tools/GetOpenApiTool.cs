@@ -11,7 +11,7 @@ public class GetOpenApiTool
     [McpServerTool(Name = "get_openapi"), Description("Retrieves the OpenAPI specification for a given service.")]
     public static async Task<string> Execute(
         IOpenApiCollector openApi,
-        [Description("Service name (e.g. precoapi, produtoapi)")] string serviceName)
+        [Description("Service name (e.g. catalog-api, orders-api)")] string serviceName)
     {
         return await openApi.GetOpenApiSpecAsync(serviceName);
     }

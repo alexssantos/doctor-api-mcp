@@ -62,6 +62,18 @@ O instalador também oferece os presets `cluster`, `namespace`, `no-volumes`, `n
 
 > Desenvolvimento local: o fluxo completo com APIs, bancos e observabilidade continua sendo `./infra/scripts/ps/up-k8s.ps1 -Build` no Windows + WSL/k3d.
 
+### Build independente do MCP Server
+
+O limite de build do produto é a solução `src/McpServer.slnx`. Ela contém somente o MCP Server, o building block de observabilidade usado por ele e seus testes:
+
+```powershell
+dotnet build .\src\McpServer.slnx --configuration Release
+dotnet test .\src\McpServer.slnx --configuration Release
+docker build -f .\src\Services\McpServer\Dockerfile -t doctor-api-mcp:local .
+```
+
+`src/mcp-apis.slnx` é a solução do laboratório de integração e inclui intencionalmente `PrecoAPI` e `ProdutoAPI`. Esses serviços também são injetados no MCP Server apenas pelos manifests de laboratório em `infra/k8s/aplicacao/mcpserver/configmap.yaml`; a configuração padrão do servidor não pré-cadastra nenhuma aplicação.
+
 ---
 
 ## Visão Geral da Arquitetura
@@ -198,7 +210,8 @@ Transporte: **Streamable HTTP** via `POST /` (protocolo MCP 2025-03-26).
 ```
 mcp-apis/
 ├── src/
-│   ├── mcp-apis.slnx                     # Solution file (.NET 10 slnx)
+│   ├── McpServer.slnx                    # Build independente do MCP Server + testes
+│   ├── mcp-apis.slnx                     # Solução do laboratório de integração
 │   ├── BuildingBlocks/
 │   │   ├── Http/
 │   │   │   ├── HttpClientFactoryExtensions.cs   # AddHttpClientWithCorrelation<T>

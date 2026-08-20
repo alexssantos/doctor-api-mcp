@@ -2,12 +2,12 @@ namespace McpApis.McpServer.Services;
 
 /// <summary>
 /// Normalizes application identifiers so the same app can be correlated across
-/// naming conventions: K8s objects use kebab-case ("preco-api"), OTel service
-/// names often use PascalCase ("PrecoAPI").
+/// naming conventions: K8s objects use kebab-case ("catalog-api"), OTel service
+/// names often use PascalCase ("CatalogAPI").
 /// </summary>
 public static class NameNormalizer
 {
-    /// <summary>Lowercases and strips every character outside [a-z0-9]: "PrecoAPI" → "precoapi".</summary>
+    /// <summary>Lowercases and strips every character outside [a-z0-9]: "CatalogAPI" → "catalogapi".</summary>
     public static string Normalize(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

@@ -14,7 +14,7 @@ public class ExplainApiTool
         IOpenApiCollector openApi,
         IJaegerCollector jaeger,
         IApplicationCatalog catalog,
-        [Description("Service name (e.g. precoapi, produtoapi)")] string serviceName)
+        [Description("Service name (e.g. catalog-api, orders-api)")] string serviceName)
     {
         if (!ToolGuard.EnsureEnabled(catalog, serviceName, out var error))
             return error;

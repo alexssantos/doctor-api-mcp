@@ -12,7 +12,7 @@ const SCENARIOS = [
   {
     id: 'health',
     label: 'Saúde agora',
-    question: 'A ProdutoAPI está saudável?',
+    question: 'A OrdersAPI está saudável?',
     tool: 'service_get_health',
     answer: 'Degradada, score 72. Os pods estão prontos, mas o P95 subiu 38% nos últimos 30 minutos.',
     evidence: ['Kubernetes 2/2 prontos', 'Prometheus P95 +38%', 'cobertura 92%'],
@@ -21,7 +21,7 @@ const SCENARIOS = [
   {
     id: 'timeline',
     label: 'Depois do deploy',
-    question: 'O que aconteceu depois do deploy da PrecoAPI?',
+    question: 'O que aconteceu depois do deploy da CatalogAPI?',
     tool: 'service_get_incident_timeline',
     answer: 'A revisão 17 foi seguida por latência anômala em 4 minutos e pelo aumento de erros 5xx em 6 minutos.',
     evidence: ['14:08 deploy rev.17', '14:12 P95 anômalo', '14:14 erros 5xx'],
@@ -32,8 +32,8 @@ const SCENARIOS = [
     label: 'Causa provável',
     question: 'Qual é a causa raiz mais provável?',
     tool: 'service_find_root_cause',
-    answer: 'Hipótese principal, confiança 86%: regressão introduzida pela revisão 17 da PrecoAPI.',
-    evidence: ['3 evidências favoráveis', '0 evidências contrárias', 'blast radius: ProdutoAPI'],
+    answer: 'Hipótese principal, confiança 86%: regressão introduzida pela revisão 17 da CatalogAPI.',
+    evidence: ['3 evidências favoráveis', '0 evidências contrárias', 'blast radius: OrdersAPI'],
     limitation: 'A recomendação é somente leitura: comparar a revisão 17 com a anterior.',
   },
 ] as const

@@ -15,8 +15,8 @@ public class FindDataOriginTool
         IJaegerCollector jaeger,
         IKubernetesCollector k8s,
         IApplicationCatalog catalog,
-        [Description("Service name (e.g. produtoapi)")] string serviceName,
-        [Description("Route path (e.g. /api/produtos/{id})")] string route)
+        [Description("Service name (e.g. orders-api)")] string serviceName,
+        [Description("Route path (e.g. /api/orders/{id})")] string route)
     {
         if (!ToolGuard.EnsureEnabled(catalog, serviceName, out var error))
             return error;

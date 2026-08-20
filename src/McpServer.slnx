@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/BuildingBlocks/" />
+  <Folder Name="/BuildingBlocks/Observability/">
+    <Project Path="BuildingBlocks/Observability/McpApis.BuildingBlocks.Observability.csproj" />
+  </Folder>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/McpServer/">
+    <Project Path="Services/McpServer/McpApis.McpServer.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Services/McpServer.Tests/McpApis.McpServer.Tests.csproj" />
+  </Folder>
+</Solution>

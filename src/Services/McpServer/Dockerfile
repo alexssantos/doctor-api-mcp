@@ -9,19 +9,16 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG TARGETARCH
 WORKDIR /repo
 
-# Copy solution + project files first for layer caching
-COPY src/mcp-apis.slnx ./src/
+# Copy only the McpServer build graph first for layer caching. Example APIs are
+# part of the integration lab and must not be required to build this image.
 COPY src/BuildingBlocks/Observability/McpApis.BuildingBlocks.Observability.csproj ./src/BuildingBlocks/Observability/
-COPY src/BuildingBlocks/Http/McpApis.BuildingBlocks.Http.csproj ./src/BuildingBlocks/Http/
-COPY src/Services/PrecoAPI/McpApis.PrecoAPI.csproj ./src/Services/PrecoAPI/
-COPY src/Services/ProdutoAPI/McpApis.ProdutoAPI.csproj ./src/Services/ProdutoAPI/
 COPY src/Services/McpServer/McpApis.McpServer.csproj ./src/Services/McpServer/
 
 # Restore (cached if .csproj unchanged)
 RUN dotnet restore src/Services/McpServer/McpApis.McpServer.csproj -a "$TARGETARCH"
 
-# Copy source
-COPY src/BuildingBlocks/ ./src/BuildingBlocks/
+# Copy only source that belongs to the McpServer build graph
+COPY src/BuildingBlocks/Observability/ ./src/BuildingBlocks/Observability/
 COPY src/Services/McpServer/ ./src/Services/McpServer/
 
 # Bring in the pre-built React dashboard (Vite outDir already points at wwwroot/dashboard,

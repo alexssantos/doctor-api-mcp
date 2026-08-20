@@ -21,7 +21,7 @@ const STEPS = [
   {
     icon: Plug,
     title: 'Pergunte ao agente',
-    body: '“Qual a saúde da ProdutoAPI?” ou “Encontre a causa raiz da regressão após o último deploy.”',
+    body: '“Qual a saúde da OrdersAPI?” ou “Encontre a causa raiz da regressão após o último deploy.”',
   },
 ]
 
