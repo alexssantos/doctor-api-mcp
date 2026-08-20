@@ -1,6 +1,53 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace McpApis.McpServer.Infrastructure.Options;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ClusterAccessScope
+{
+    Cluster,
+    Namespace,
+    None
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ClusterStateStorage
+{
+    ConfigMap,
+    Memory
+}
+
+/// <summary>
+/// Declares the Kubernetes capabilities that the installation is allowed to
+/// use. The Helm chart renders RBAC, state storage and writable volumes from
+/// the same values so the runtime contract cannot silently exceed the
+/// installation contract.
+/// </summary>
+public sealed class ClusterAccessOptions
+{
+    public const string SectionName = "ClusterAccess";
+
+    public ClusterAccessScope Scope { get; init; } = ClusterAccessScope.Cluster;
+    public bool ServiceDiscovery { get; init; } = true;
+    public ClusterStateStorage StateStorage { get; init; } = ClusterStateStorage.ConfigMap;
+    public bool AllowVolumes { get; init; } = true;
+    public bool ValidateOnStart { get; init; } = true;
+
+    [Range(5, 600)]
+    public int ValidationCacheSeconds { get; init; } = 30;
+
+    public string EffectiveMode =>
+        Scope == ClusterAccessScope.None && !ServiceDiscovery && !AllowVolumes
+            ? "restricted"
+            : !ServiceDiscovery
+                ? "no-service-discovery"
+                : !AllowVolumes
+                    ? "no-volumes"
+                    : Scope == ClusterAccessScope.Namespace
+                        ? "namespace-only"
+                        : "cluster";
+}
 
 public sealed class SecurityOptions
 {

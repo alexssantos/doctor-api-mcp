@@ -2,6 +2,14 @@ namespace McpApis.McpServer.Services.Contracts;
 
 public interface IKubernetesCollector
 {
+    Task<bool> CanIAsync(
+        string verb,
+        string apiGroup,
+        string resource,
+        string? namespaceName = null,
+        string? resourceName = null,
+        CancellationToken cancellationToken = default);
+
     Task<List<ServiceInfo>> ListServicesAsync(CancellationToken cancellationToken = default);
     Task<List<PodInfo>> ListPodsAsync(CancellationToken cancellationToken = default);
     Task<List<DeploymentInfo>> ListDeploymentsAsync(CancellationToken cancellationToken = default);

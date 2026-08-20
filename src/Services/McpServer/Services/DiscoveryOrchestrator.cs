@@ -38,6 +38,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DiscoveryOrchestrator> _logger;
     private readonly SecurityOptions _security;
+    private readonly ClusterAccessOptions _clusterAccess;
 
     private readonly SemaphoreSlim _scanLock = new(1, 1);
     private readonly Channel<bool> _rescanSignal = Channel.CreateBounded<bool>(
@@ -56,6 +57,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         IDeploymentHistoryStore deploymentHistory,
         IServiceScopeFactory scopeFactory,
         IOptions<SecurityOptions> security,
+        IOptions<ClusterAccessOptions> clusterAccess,
         ILogger<DiscoveryOrchestrator> logger)
     {
         _config = config;
@@ -65,6 +67,7 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
         _deploymentHistory = deploymentHistory;
         _scopeFactory = scopeFactory;
         _security = security.Value;
+        _clusterAccess = clusterAccess.Value;
         _logger = logger;
     }
 
@@ -90,11 +93,14 @@ public class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
     private async Task<DiscoveryScanResult> RunScanAsync(CancellationToken ct)
     {
-        var mode = _config["Discovery:Mode"] ?? "Auto";
+        var configuredMode = _config["Discovery:Mode"] ?? "Auto";
+        var mode = _clusterAccess.ServiceDiscovery ? configuredMode : "Config";
         var warnings = new List<string>();
         var now = DateTimeOffset.UtcNow;
 
-        _logger.LogInformation("Discovery scan starting (mode: {Mode})...", mode);
+        _logger.LogInformation(
+            "Discovery scan starting (mode: {Mode}, configured: {ConfiguredMode}, cluster access: {AccessMode})...",
+            mode, configuredMode, _clusterAccess.EffectiveMode);
 
         var candidates = mode.Equals("Auto", StringComparison.OrdinalIgnoreCase)
             ? await CollectAutoAsync(warnings, ct)

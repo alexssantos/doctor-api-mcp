@@ -16,6 +16,33 @@ public class KubernetesService : IKubernetesCollector
         _client = new Kubernetes(config);
     }
 
+    public async Task<bool> CanIAsync(
+        string verb,
+        string apiGroup,
+        string resource,
+        string? namespaceName = null,
+        string? resourceName = null,
+        CancellationToken cancellationToken = default)
+    {
+        var review = new V1SelfSubjectAccessReview
+        {
+            Spec = new V1SelfSubjectAccessReviewSpec
+            {
+                ResourceAttributes = new V1ResourceAttributes
+                {
+                    Verb = verb,
+                    Group = apiGroup,
+                    Resource = resource,
+                    NamespaceProperty = namespaceName,
+                    Name = resourceName
+                }
+            }
+        };
+        var response = await _client.AuthorizationV1.CreateSelfSubjectAccessReviewAsync(
+            review, cancellationToken: cancellationToken);
+        return response.Status?.Allowed ?? false;
+    }
+
     public async Task<List<ServiceInfo>> ListServicesAsync(CancellationToken cancellationToken = default)
     {
         var services = await _client.ListNamespacedServiceAsync(
