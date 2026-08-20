@@ -8,6 +8,12 @@ metadata:
     {{- include "doctor-api-mcp.labels" . | nindent 4 }}
 data:
   ASPNETCORE_ENVIRONMENT: {{ ternary "Production" "Development" .Values.security.authentication.enabled | quote }}
+  ClusterAccess__Scope: {{ .Values.clusterAccess.scope | quote }}
+  ClusterAccess__ServiceDiscovery: {{ .Values.clusterAccess.serviceDiscovery | quote }}
+  ClusterAccess__StateStorage: {{ .Values.clusterAccess.stateStorage | quote }}
+  ClusterAccess__AllowVolumes: {{ .Values.clusterAccess.allowVolumes | quote }}
+  ClusterAccess__ValidateOnStart: {{ .Values.clusterAccess.validateOnStart | quote }}
+  ClusterAccess__ValidationCacheSeconds: {{ .Values.clusterAccess.validationCacheSeconds | quote }}
   Security__Authentication__Enabled: {{ .Values.security.authentication.enabled | quote }}
   {{- $allowedNamespaces := .Values.security.allowedNamespaces | default (list $namespace) }}
   {{- range $index, $value := $allowedNamespaces }}
@@ -25,7 +31,7 @@ data:
   DataSources__Loki__BaseUrl: {{ default (printf "http://loki.%s.svc.cluster.local:3100" .Release.Namespace) .Values.dataSources.lokiBaseUrl | quote }}
   Otel__Endpoint: {{ default (printf "http://jaeger.%s.svc.cluster.local:4317" .Release.Namespace) .Values.otel.endpoint | quote }}
   Otel__CaptureBody: {{ .Values.otel.captureBody | quote }}
-  Discovery__Mode: {{ .Values.discovery.mode | quote }}
+  Discovery__Mode: {{ ternary .Values.discovery.mode "Config" .Values.clusterAccess.serviceDiscovery | quote }}
   Discovery__KubernetesLabel: {{ .Values.discovery.kubernetesLabel | quote }}
   Discovery__RescanSeconds: {{ .Values.discovery.rescanSeconds | quote }}
   Discovery__RevalidateSeconds: {{ .Values.discovery.revalidateSeconds | quote }}
@@ -43,6 +49,9 @@ data:
   Observability__Features__EnableRawQueries: {{ .Values.observability.enableRawQueries | quote }}
   Observability__Features__EnableLogs: {{ .Values.observability.enableLogs | quote }}
   Observability__Features__EnableDeploymentEvents: {{ .Values.observability.enableDeploymentEvents | quote }}
+  {{- range $name, $url := .Values.services }}
+  Services__{{ $name }}: {{ $url | quote }}
+  {{- end }}
   {{- with .Values.dashboardLinks.jaeger }}
   Dashboard__Links__Jaeger: {{ . | quote }}
   {{- end }}

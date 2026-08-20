@@ -1,3 +1,4 @@
+{{- include "doctor-api-mcp.validateValues" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,6 +33,11 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "doctor-api-mcp.serviceAccountName" . }}
+      {{- if ne .Values.serviceAccount.automountToken nil }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      {{- else }}
+      automountServiceAccountToken: {{ ne (lower (toString .Values.clusterAccess.scope)) "none" }}
+      {{- end }}
       terminationGracePeriodSeconds: 30
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -56,12 +62,16 @@ spec:
             - secretRef:
                 name: {{ include "doctor-api-mcp.authSecretName" . }}
             {{- end }}
+          {{- if or .Values.clusterAccess.allowVolumes .Values.extraEnv }}
           env:
+            {{- if .Values.clusterAccess.allowVolumes }}
             - name: TMPDIR
               value: /tmp
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
@@ -79,13 +89,17 @@ spec:
               path: /live
               port: http
             {{- toYaml .Values.probes.startup | nindent 12 }}
+          {{- if .Values.clusterAccess.allowVolumes }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+          {{- end }}
+      {{- if .Values.clusterAccess.allowVolumes }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

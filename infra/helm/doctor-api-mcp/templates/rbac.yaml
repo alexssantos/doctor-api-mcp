@@ -1,3 +1,6 @@
+{{- $scope := lower (toString .Values.clusterAccess.scope) -}}
+{{- $configMapState := eq (lower (toString .Values.clusterAccess.stateStorage)) "configmap" -}}
+{{- if eq $scope "cluster" }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -6,7 +9,15 @@ metadata:
     {{- include "doctor-api-mcp.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "endpoints", "events"]
+    resources:
+      - pods
+      {{- if .Values.observability.enableDeploymentEvents }}
+      - events
+      {{- end }}
+      {{- if .Values.clusterAccess.serviceDiscovery }}
+      - services
+      - endpoints
+      {{- end }}
     verbs: ["get", "list"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
@@ -26,7 +37,11 @@ roleRef:
   kind: ClusterRole
   name: {{ include "doctor-api-mcp.fullname" . }}
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- if or (eq $scope "namespace") $configMapState }}
+{{- if eq $scope "cluster" }}
 ---
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -35,13 +50,28 @@ metadata:
   labels:
     {{- include "doctor-api-mcp.labels" . | nindent 4 }}
 rules:
+  {{- if eq $scope "namespace" }}
   - apiGroups: [""]
-    resources: ["configmaps"]
+    resources:
+      - pods
+      {{- if .Values.observability.enableDeploymentEvents }}
+      - events
+      {{- end }}
+      {{- if .Values.clusterAccess.serviceDiscovery }}
+      - services
+      - endpoints
+      {{- end }}
     verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  {{- end }}
+  {{- if $configMapState }}
   - apiGroups: [""]
     resources: ["configmaps"]
     resourceNames: [{{ printf "%s-state" (include "doctor-api-mcp.fullname" .) | quote }}]
-    verbs: ["update", "patch"]
+    verbs: ["get", "update", "patch"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -58,3 +88,4 @@ roleRef:
   kind: Role
   name: {{ include "doctor-api-mcp.fullname" . }}
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
