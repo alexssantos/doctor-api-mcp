@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/Services/McpServer/**'
       - 'src/Services/McpServer.Tests/**'
+      - 'src/McpServer.slnx'
       - 'infra/helm/doctor-api-mcp/**'
       - 'infra/scripts/**/validate-install-requirements.*'
       - 'tests/cluster-lab/**'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'src/Services/McpServer/**'
       - 'src/Services/McpServer.Tests/**'
+      - 'src/McpServer.slnx'
       - 'infra/helm/doctor-api-mcp/**'
       - 'infra/scripts/**/validate-install-requirements.*'
       - 'tests/cluster-lab/**'
@@ -50,7 +52,7 @@ jobs:
           pwsh -NoProfile -Command '$allErrors = @(); Get-ChildItem install.ps1,infra/scripts/ps/validate-install-requirements.ps1,tests/cluster-lab/scripts/Invoke-InstallationMatrix.ps1 | ForEach-Object { $parseErrors = $null; [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$parseErrors) > $null; $allErrors += @($parseErrors) }; if ($allErrors.Count -gt 0) { $allErrors | Format-List; exit 1 }'
 
       - name: Test runtime contracts
-        run: dotnet test src/Services/McpServer.Tests/McpApis.McpServer.Tests.csproj --configuration Release
+        run: dotnet test src/McpServer.slnx --configuration Release
 
       - name: Validate Helm scenario contracts
         shell: bash

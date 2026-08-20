@@ -6,7 +6,7 @@ Laboratório reproduzível para validar o MCP Server nos perfis `cluster`, `name
 
 ```bash
 bash tests/cluster-lab/scripts/validate-installation-scenarios.sh
-dotnet test src/Services/McpServer.Tests/McpApis.McpServer.Tests.csproj
+dotnet test src/McpServer.slnx
 ```
 
 ## Matriz em k3d
