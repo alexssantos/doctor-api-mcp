@@ -121,20 +121,20 @@ export function ArchitectureFlow() {
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <FlowNode
                 icon={Server}
-                title="ProdutoAPI"
-                subtitle="produtos · PostgreSQL produto_db"
+                title="OrdersAPI"
+                subtitle="pedidos · namespace apps"
                 tone="bg-muted text-foreground"
               />
               <FlowNode
                 icon={Server}
-                title="PrecoAPI"
-                subtitle="preços · PostgreSQL preco_db"
+                title="CatalogAPI"
+                subtitle="catálogo · namespace apps"
                 tone="bg-muted text-foreground"
               />
             </div>
 
             <p className="mt-3 text-center text-[11px] text-muted-foreground">
-              ProdutoAPI chama PrecoAPI via HttpClient tipado — a aresta que aparece no grafo de dependências.
+              OrdersAPI chama CatalogAPI — a aresta observada que aparece no grafo de dependências.
             </p>
           </CardContent>
         </Card>

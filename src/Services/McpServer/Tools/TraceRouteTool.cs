@@ -13,15 +13,15 @@ public class TraceRouteTool
     public static async Task<string> Execute(
         IJaegerCollector jaeger,
         IApplicationCatalog catalog,
-        [Description("Service name to trace (e.g. PrecoAPI, ProdutoAPI)")] string service,
-        [Description("Optional operation name or HTTP route to filter (e.g. GET /api/precos)")] string? operation = null,
+        [Description("Service name to trace (e.g. CatalogAPI, OrdersAPI)")] string service,
+        [Description("Optional operation name or HTTP route to filter (e.g. GET /api/orders)")] string? operation = null,
         [Description("Max number of traces to return (default 5)")] int limit = 5)
     {
         if (!ToolGuard.EnsureEnabled(catalog, service, out var error))
             return error;
 
         // Jaeger service names are case-sensitive; prefer the raw OTel name from
-        // the catalog so aliases like "precoapi" resolve to "PrecoAPI".
+        // the catalog so aliases like "catalogapi" resolve to "CatalogAPI".
         if (catalog.TryGet(service, out var app) && app.OtelServiceName is not null)
             service = app.OtelServiceName;
 

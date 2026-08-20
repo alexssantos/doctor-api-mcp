@@ -13,7 +13,7 @@ public class GetHealthTool
     public static async Task<string> Execute(
         IKubernetesCollector k8s,
         IApplicationCatalog catalog,
-        [Description("App label to check (e.g. precoapi, produtoapi, jaeger, prometheus, grafana)")] string appName)
+        [Description("App label to check (e.g. catalog-api, orders-api, jaeger, prometheus, grafana)")] string appName)
     {
         if (!ToolGuard.EnsureEnabled(catalog, appName, out var error))
             return error;

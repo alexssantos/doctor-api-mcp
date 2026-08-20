@@ -36,13 +36,13 @@ public record OpenApiInfo(bool Validated, string? Path, IReadOnlyList<string> Fa
 /// </summary>
 public record DiscoveredApplication
 {
-    /// <summary>Canonical normalized name, e.g. "precoapi".</summary>
+    /// <summary>Canonical normalized name, e.g. "catalogapi".</summary>
     public required string Name { get; init; }
     public string? Namespace { get; init; }
     public DiscoverySources Sources { get; init; }
     public string? DeploymentName { get; init; }
     public string? KubernetesServiceName { get; init; }
-    /// <summary>Raw service name as reported by Jaeger (case-sensitive), e.g. "PrecoAPI".</summary>
+    /// <summary>Raw service name as reported by Jaeger (case-sensitive), e.g. "CatalogAPI".</summary>
     public string? OtelServiceName { get; init; }
     /// <summary>Resolved base URL; null for OTel-only applications.</summary>
     public string? BaseUrl { get; init; }

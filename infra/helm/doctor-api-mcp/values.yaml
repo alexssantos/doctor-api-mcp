@@ -115,7 +115,7 @@ dataSources:
 # Explicit service endpoints are mandatory when clusterAccess.serviceDiscovery
 # is false. Aliases must be valid environment-variable key fragments.
 services: {}
-#  produtoapi: http://produtoapi.apps.svc.cluster.local
+#  catalog-api: http://catalog-api.apps.svc.cluster.local
 
 otel:
   endpoint: ""
