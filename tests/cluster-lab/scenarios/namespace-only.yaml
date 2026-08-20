@@ -1,0 +1,9 @@
+clusterAccess:
+  scope: Namespace
+  serviceDiscovery: true
+  stateStorage: ConfigMap
+  allowVolumes: true
+  validateOnStart: true
+security:
+  allowedNamespaces:
+    - mcp-install-test

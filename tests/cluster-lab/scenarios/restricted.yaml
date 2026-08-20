@@ -1,0 +1,15 @@
+replicaCount: 1
+clusterAccess:
+  scope: None
+  serviceDiscovery: false
+  stateStorage: Memory
+  allowVolumes: false
+  validateOnStart: true
+serviceAccount:
+  automountToken: false
+observability:
+  enableDeploymentEvents: false
+pdb:
+  enabled: false
+services:
+  fixture: http://fixture.mcp-install-test.svc.cluster.local

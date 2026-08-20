@@ -1,0 +1,6 @@
+clusterAccess:
+  scope: Cluster
+  serviceDiscovery: true
+  stateStorage: ConfigMap
+  allowVolumes: false
+  validateOnStart: true

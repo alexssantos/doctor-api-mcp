@@ -58,6 +58,8 @@ kubectl port-forward service/doctor-api-mcp 4000:4000 -n mcp-apis
 
 Veja configuração de providers, autenticação, upgrade e desinstalação em [doc/installation.md](doc/installation.md).
 
+O instalador também oferece os presets `cluster`, `namespace`, `no-volumes`, `no-service-discovery` e `restricted`. Eles ajustam RBAC, token do ServiceAccount, estado, volumes e ferramentas MCP como um único contrato. Veja a [matriz de restrições e testes](doc/006_infraestrutura_testes_clusters.md).
+
 > Desenvolvimento local: o fluxo completo com APIs, bancos e observabilidade continua sendo `./infra/scripts/ps/up-k8s.ps1 -Build` no Windows + WSL/k3d.
 
 ---
@@ -301,7 +303,7 @@ mcp-apis/
 
 ## MCP Server — Ferramentas
 
-O McpServer expõe **16 ferramentas por padrão**: oito legadas de compatibilidade e oito vNext com envelopes, limites, freshness, fontes e evidências. Todas recebem dependências via injeção de dependência.
+No perfil padrão `cluster`, o McpServer expõe **16 ferramentas**: oito legadas de compatibilidade e oito vNext com envelopes, limites, freshness, fontes e evidências. Todas recebem dependências via injeção de dependência.
 
 | Ferramenta | Descrição | Fontes de Dados |
 |---|---|---|
@@ -323,6 +325,8 @@ O McpServer expõe **16 ferramentas por padrão**: oito legadas de compatibilida
 | `system_get_health_summary` | Resume a saúde dos serviços pelo mesmo engine do dashboard | Health Engine + catálogo |
 
 > 🔒 **Superfície segura:** aplicações desabilitadas continuam protegidas pelo catálogo. `query_metrics` foi retirado da superfície padrão; PromQL bruto só pode existir nos endpoints administrativos quando `Observability:Features:EnableRawQueries=true`, com policy admin. O dashboard e as tools vNext consomem os mesmos providers/engines tipados.
+
+Nos perfis restritos, a superfície acompanha as capacidades reais: sem service discovery, `list_services` é omitida; com `ClusterAccess__Scope=None`, `get_health` e `find_data_origin` também são omitidas. As ferramentas vNext continuam disponíveis e sinalizam fontes sem acesso como `partial`/`unavailable`.
 
 ### Registro das ferramentas
 
@@ -346,7 +350,7 @@ Ao subir, o McpServer executa automaticamente um scan de descoberta (e re-execut
 
 ```
 DiscoveryOrchestrator (startup bloqueante + BackgroundService)
-  └─► coleta fontes (Deployments + Services/Endpoints cluster-wide, Jaeger, Config)
+  └─► coleta apenas as fontes permitidas (Kubernetes no scope declarado, providers e Config)
        └─► correlação de identidade (matching estrutural + normalização de nomes)
               └─► Validation (ServiceValidator) — por aplicação com base URL
                      └─► estado do toggle (ConfigMap mcpserver-state)
@@ -354,6 +358,20 @@ DiscoveryOrchestrator (startup bloqueante + BackgroundService)
 ```
 
 O `ApplicationCatalog` é a fonte de verdade: o dashboard lista **todas** as aplicações descobertas (inclusive as não indexáveis, com o motivo), e as tools MCP enxergam apenas as **habilitadas** no switch de indexação. Serviços que falham na validação OpenAPI seguem visíveis no dashboard e utilizáveis por tools de traces/health — apenas as tools baseadas em spec ficam indisponíveis.
+
+### Restrições de acesso ao cluster
+
+O bloco `ClusterAccess` declara quais capacidades podem ser usadas pelo processo e é refletido pelo chart Helm:
+
+| Parâmetro | Valores | Efeito |
+|---|---|---|
+| `ClusterAccess__Scope` | `Cluster`, `Namespace`, `None` | Define RBAC cluster-wide, Role em um namespace ou ausência completa da API Kubernetes |
+| `ClusterAccess__ServiceDiscovery` | `true`, `false` | Habilita Services/Endpoints; quando falso, força descoberta `Config` e exige `Services__*` |
+| `ClusterAccess__StateStorage` | `ConfigMap`, `Memory` | Persiste estado no cluster ou somente no processo |
+| `ClusterAccess__AllowVolumes` | `true`, `false` | Controla o `emptyDir` gravável em `/tmp`; o chart nunca cria PV/PVC |
+| `ClusterAccess__ValidateOnStart` | `true`, `false` | Controla a validação antecipada no startup; `/ready` sempre valida e bloqueia requisitos ausentes |
+
+`GET /api/requirements?refresh=true` retorna as permissões efetivas e os requisitos ausentes. Combinações inválidas são rejeitadas antes da instalação pelo schema Helm. Consulte [doc/006_infraestrutura_testes_clusters.md](doc/006_infraestrutura_testes_clusters.md) para os presets, invariantes e automação k3d/k6.
 
 ---
 
@@ -702,18 +720,18 @@ controller desse Gateway quando aprovado no ambiente alvo.
 ### RBAC do McpServer
 
 ```yaml
-ServiceAccount: mcp-reader
-ClusterRole: mcp-reader-cluster-role          # descoberta cluster-wide (feature 004)
-  - pods, services, endpoints, events: get, list
-  - deployments: get, list
-Role: mcp-reader-role (namespace mcp-apis)
-  - configmaps: get, list
-  - configmaps [mcpserver-state]: update, patch   # persiste o switch de indexação
-ClusterRoleBinding: mcp-reader-cluster-binding
-RoleBinding: mcp-reader-binding
+scope=Cluster
+  ClusterRole: pods, deployments e eventos; Services/Endpoints quando habilitados
+  Role: get/update/patch somente no ConfigMap de estado
+
+scope=Namespace
+  Role: os mesmos recursos, apenas no namespace da release
+
+scope=None
+  nenhum Role, ClusterRole ou binding; automountServiceAccountToken=false
 ```
 
-O McpServer usa `KubernetesClientConfiguration.InClusterConfig()` — não precisa de kubeconfig montado, o ServiceAccount é injetado automaticamente pelo Kubernetes. A única permissão de escrita é `update/patch` no ConfigMap `mcpserver-state` (restrita via `resourceNames`).
+Nos scopes `Cluster` e `Namespace`, o McpServer usa `KubernetesClientConfiguration.InClusterConfig()` e recebe o token projetado do ServiceAccount. A única permissão de escrita do runtime é `update/patch` no ConfigMap de estado, restrita por `resourceNames`. Em `scope=None`, o cliente Kubernetes nem é construído e o estado é mantido em memória.
 
 O McpServer roda com duas réplicas, PDB, NetworkPolicy, rollout sem indisponibilidade, probes `/ready` e `/live`, filesystem read-only e afinidade de sessão no Ingress. Detalhes e matriz de validação: [`doc/operations/observability-intelligence-rollout.md`](doc/operations/observability-intelligence-rollout.md).
 

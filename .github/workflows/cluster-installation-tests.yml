@@ -1,0 +1,102 @@
+name: Cluster installation contracts
+
+on:
+  pull_request:
+    paths:
+      - 'src/Services/McpServer/**'
+      - 'src/Services/McpServer.Tests/**'
+      - 'infra/helm/doctor-api-mcp/**'
+      - 'infra/scripts/**/validate-install-requirements.*'
+      - 'tests/cluster-lab/**'
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/cluster-installation-tests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/Services/McpServer/**'
+      - 'src/Services/McpServer.Tests/**'
+      - 'infra/helm/doctor-api-mcp/**'
+      - 'infra/scripts/**/validate-install-requirements.*'
+      - 'tests/cluster-lab/**'
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/cluster-installation-tests.yml'
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: azure/setup-helm@v4
+
+      - name: Validate script syntax
+        shell: bash
+        run: |
+          bash -n install.sh
+          bash -n infra/scripts/sh/validate-install-requirements.sh
+          bash -n tests/cluster-lab/scripts/*.sh
+          pwsh -NoProfile -Command '$allErrors = @(); Get-ChildItem install.ps1,infra/scripts/ps/validate-install-requirements.ps1,tests/cluster-lab/scripts/Invoke-InstallationMatrix.ps1 | ForEach-Object { $parseErrors = $null; [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$parseErrors) > $null; $allErrors += @($parseErrors) }; if ($allErrors.Count -gt 0) { $allErrors | Format-List; exit 1 }'
+
+      - name: Test runtime contracts
+        run: dotnet test src/Services/McpServer.Tests/McpApis.McpServer.Tests.csproj --configuration Release
+
+      - name: Validate Helm scenario contracts
+        shell: bash
+        run: bash tests/cluster-lab/scripts/validate-installation-scenarios.sh
+
+  k3d-matrix:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: static-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - cluster
+          - namespace-only
+          - no-volumes
+          - no-service-discovery
+          - restricted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Install k3d
+        shell: bash
+        run: |
+          curl -fsSLo /usr/local/bin/k3d \
+            https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64
+          chmod +x /usr/local/bin/k3d
+          k3d version
+
+      - name: Run installation scenario
+        shell: bash
+        run: |
+          bash tests/cluster-lab/scripts/run-installation-scenario.sh \
+            --scenario '${{ matrix.scenario }}' \
+            --namespace 'mcp-install-${{ matrix.scenario }}' \
+            --create-cluster 'mcp-test-${{ matrix.scenario }}' \
+            --build-image
+
+      - name: Upload scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-installation-${{ matrix.scenario }}
+          path: tests/cluster-lab/reports/
+          if-no-files-found: warn
+          retention-days: 14

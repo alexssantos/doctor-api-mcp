@@ -1,0 +1,11 @@
+clusterAccess:
+  scope: Namespace
+  serviceDiscovery: false
+  stateStorage: ConfigMap
+  allowVolumes: true
+  validateOnStart: true
+security:
+  allowedNamespaces:
+    - mcp-install-test
+services:
+  fixture: http://fixture.mcp-install-test.svc.cluster.local

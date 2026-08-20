@@ -9,6 +9,20 @@ public static class OptionsRegistration
         IConfiguration configuration,
         IHostEnvironment environment)
     {
+        services.AddOptions<ClusterAccessOptions>()
+            .Bind(configuration.GetSection(ClusterAccessOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => Enum.IsDefined(o.Scope),
+                "ClusterAccess:Scope must be Cluster, Namespace or None.")
+            .Validate(o => Enum.IsDefined(o.StateStorage),
+                "ClusterAccess:StateStorage must be ConfigMap or Memory.")
+            .Validate(o => o.Scope != ClusterAccessScope.None || !o.ServiceDiscovery,
+                "ClusterAccess:ServiceDiscovery must be false when Scope is None.")
+            .Validate(o => o.Scope != ClusterAccessScope.None ||
+                           o.StateStorage == ClusterStateStorage.Memory,
+                "ClusterAccess:StateStorage must be Memory when Scope is None.")
+            .ValidateOnStart();
+
         services.AddOptions<SecurityOptions>()
             .Bind(configuration.GetSection(SecurityOptions.SectionName))
             .ValidateDataAnnotations()

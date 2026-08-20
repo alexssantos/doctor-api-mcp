@@ -13,6 +13,22 @@ fullnameOverride: ""
 serviceAccount:
   create: true
   name: ""
+  # null derives the value from clusterAccess.scope. Scope None disables the
+  # projected Kubernetes API token; other scopes require it.
+  automountToken: null
+
+clusterAccess:
+  # Cluster: cluster-scoped read RBAC; Namespace: Role in the release namespace;
+  # None: no Kubernetes API token and no Kubernetes RBAC.
+  scope: Cluster
+  serviceDiscovery: true
+  # ConfigMap persists indexing/deployment history. Memory requires one replica.
+  stateStorage: ConfigMap
+  # Controls the MCP-owned writable emptyDir mounted at /tmp. Persistent volumes
+  # are never created by this chart.
+  allowVolumes: true
+  validateOnStart: true
+  validationCacheSeconds: 30
 
 service:
   type: ClusterIP
@@ -96,6 +112,11 @@ dataSources:
   prometheusBaseUrl: ""
   lokiBaseUrl: ""
 
+# Explicit service endpoints are mandatory when clusterAccess.serviceDiscovery
+# is false. Aliases must be valid environment-variable key fragments.
+services: {}
+#  produtoapi: http://produtoapi.apps.svc.cluster.local
+
 otel:
   endpoint: ""
   captureBody: false
@@ -127,6 +148,13 @@ observability:
   enableRawQueries: false
   enableLogs: true
   enableDeploymentEvents: true
+
+tests:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.37.0"
+    pullPolicy: IfNotPresent
 
 dashboardLinks:
   jaeger: ""

@@ -21,6 +21,7 @@ using McpApis.McpServer.Services;
 using McpApis.McpServer.Services.Contracts;
 using McpApis.McpServer.Tools;
 using McpApis.McpServer.Tools.VNext;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,6 +38,9 @@ var jaegerBaseUrl = builder.Configuration["DataSources:Jaeger:BaseUrl"] ?? "http
 var prometheusBaseUrl = builder.Configuration["DataSources:Prometheus:BaseUrl"] ?? "http://prometheus:9090";
 var lokiBaseUrl = builder.Configuration["DataSources:Loki:BaseUrl"] ?? "http://loki:3100";
 var k8sNamespace = builder.Configuration["DataSources:Kubernetes:Namespace"] ?? "mcp-apis";
+var clusterAccess = builder.Configuration
+    .GetSection(ClusterAccessOptions.SectionName)
+    .Get<ClusterAccessOptions>() ?? new ClusterAccessOptions();
 
 // Core collectors
 // Typed HttpClients via IHttpClientFactory: avoids socket exhaustion / stale-DNS
@@ -57,7 +61,10 @@ builder.Services.AddHttpClient<ILogsProvider, LokiLogsProvider>(client =>
     client.BaseAddress = new Uri(lokiBaseUrl.TrimEnd('/') + "/");
     client.Timeout = Timeout.InfiniteTimeSpan;
 }).ConfigurePrimaryHttpMessageHandler(CreateBackendHandler);
-builder.Services.AddSingleton<IKubernetesCollector>(new KubernetesService(k8sNamespace));
+if (clusterAccess.Scope == ClusterAccessScope.None)
+    builder.Services.AddSingleton<IKubernetesCollector, DisabledKubernetesCollector>();
+else
+    builder.Services.AddSingleton<IKubernetesCollector>(new KubernetesService(k8sNamespace));
 
 // Application catalog: live inventory of everything discovered in the cluster.
 // The legacy registry is a read-only view of it filtered by enabled + validated,
@@ -65,9 +72,18 @@ builder.Services.AddSingleton<IKubernetesCollector>(new KubernetesService(k8sNam
 builder.Services.AddSingleton<IApplicationCatalog, ApplicationCatalog>();
 builder.Services.AddSingleton<IServiceIdentityResolver, ServiceIdentityResolver>();
 builder.Services.AddSingleton<IServiceRegistry, ServiceRegistry>();
-builder.Services.AddSingleton<IIndexingStateStore, KubernetesIndexingStateStore>();
-builder.Services.AddSingleton<IDeploymentHistoryStore, KubernetesDeploymentHistoryStore>();
+if (clusterAccess.StateStorage == ClusterStateStorage.Memory)
+{
+    builder.Services.AddSingleton<IIndexingStateStore, InMemoryIndexingStateStore>();
+    builder.Services.AddSingleton<IDeploymentHistoryStore, InMemoryDeploymentHistoryStore>();
+}
+else
+{
+    builder.Services.AddSingleton<IIndexingStateStore, KubernetesIndexingStateStore>();
+    builder.Services.AddSingleton<IDeploymentHistoryStore, KubernetesDeploymentHistoryStore>();
+}
 builder.Services.AddSingleton<IObservabilityCache, ObservabilityCache>();
+builder.Services.AddSingleton<IClusterRequirementsValidator, ClusterRequirementsValidator>();
 
 // OpenAPI collector depends on registry + catalog
 builder.Services.AddHttpClient<IOpenApiCollector, OpenApiService>(client =>
@@ -110,14 +126,11 @@ var mcpBuilder = builder.Services
         };
     })
     .WithHttpTransport()
-    .WithTools<ListServicesTool>()
     .WithTools<ListDiscoveredApplicationsTool>()
     .WithTools<GetOpenApiTool>()
     .WithTools<TraceRouteTool>()
     .WithTools<ExplainApiTool>()
-    .WithTools<GetHealthTool>()
     .WithTools<FindDependenciesTool>()
-    .WithTools<FindDataOriginTool>()
     .WithTools<ServiceGetSpecTool>()
     .WithTools<ServiceGetHealthTool>()
     .WithTools<ServiceGetScoreTool>()
@@ -127,10 +140,24 @@ var mcpBuilder = builder.Services
     .WithTools<ServiceFindRootCauseTool>()
     .WithTools<SystemGetHealthSummaryTool>();
 
+if (clusterAccess.Scope != ClusterAccessScope.None)
+{
+    mcpBuilder
+        .WithTools<GetHealthTool>()
+        .WithTools<FindDataOriginTool>();
+    if (clusterAccess.ServiceDiscovery)
+        mcpBuilder.WithTools<ListServicesTool>();
+}
+
 if (builder.Configuration.GetValue<bool>("Observability:Features:EnableRawQueries"))
     mcpBuilder.WithTools<QueryMetricsTool>();
 
 var app = builder.Build();
+
+var requirementsValidator = app.Services.GetRequiredService<IClusterRequirementsValidator>();
+var clusterAccessOptions = app.Services.GetRequiredService<IOptions<ClusterAccessOptions>>().Value;
+if (clusterAccessOptions.ValidateOnStart)
+    await requirementsValidator.ValidateAsync(forceRefresh: true);
 
 // Populate the catalog before serving traffic so MCP clients that connect early
 // already see the discovered applications. The background service re-scans after.
@@ -179,26 +206,68 @@ app.MapGet("/live", () => Results.Ok(new
     service = "mcp-apis-server",
     observedAt = DateTimeOffset.UtcNow
 })).AllowAnonymous();
-app.MapGet("/ready", (IDiscoveryOrchestrator discovery) =>
-    discovery.LastScanCompletedAt is null
-        ? Results.Json(new { status = "starting", service = "mcp-apis-server" }, statusCode: 503)
-        : Results.Ok(new
+app.MapGet("/ready", async (
+    IDiscoveryOrchestrator discovery,
+    IClusterRequirementsValidator requirements,
+    CancellationToken cancellationToken) =>
+{
+    var report = await requirements.ValidateAsync(cancellationToken: cancellationToken);
+    if (!report.MeetsMinimumRequirements)
+    {
+        return Results.Json(new
         {
-            status = "ready",
+            status = "requirements-not-met",
             service = "mcp-apis-server",
-            lastScanAt = discovery.LastScanCompletedAt
-        })).AllowAnonymous();
+            mode = report.Mode,
+            missingRequirements = report.MissingRequirements
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    if (discovery.LastScanCompletedAt is null)
+        return Results.Json(new { status = "starting", service = "mcp-apis-server" }, statusCode: 503);
+    return Results.Ok(new
+    {
+        status = "ready",
+        service = "mcp-apis-server",
+        mode = report.Mode,
+        lastScanAt = discovery.LastScanCompletedAt
+    });
+}).AllowAnonymous();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "mcp-apis-server" }))
     .AllowAnonymous();
-app.MapGet("/api/status", (
+app.MapGet("/api/status", async (
         IDiscoveryOrchestrator discovery,
-        IApplicationCatalog catalog) => Results.Ok(new
+        IApplicationCatalog catalog,
+        IClusterRequirementsValidator requirements,
+        CancellationToken cancellationToken) =>
+    {
+        var report = await requirements.ValidateAsync(cancellationToken: cancellationToken);
+        return Results.Ok(new
         {
-            status = discovery.LastScanCompletedAt is null ? "starting" : "ready",
+            status = discovery.LastScanCompletedAt is null
+                ? "starting"
+                : report.MeetsMinimumRequirements ? "ready" : "requirements-not-met",
             lastScanAt = discovery.LastScanCompletedAt,
             catalogServices = catalog.GetAll().Count,
-            enabledServices = catalog.GetAll().Count(a => a.Enabled)
-        }))
+            enabledServices = catalog.GetAll().Count(a => a.Enabled),
+            clusterAccess = new
+            {
+                report.Mode,
+                report.Scope,
+                report.ServiceDiscovery,
+                report.StateStorage,
+                report.VolumesAllowed,
+                report.MeetsMinimumRequirements,
+                report.MissingRequirements
+            }
+        });
+    })
+    .RequireAuthorization(ObservabilityPolicies.Reader)
+    .RequireRateLimiting(ObservabilityPolicies.RateLimit);
+app.MapGet("/api/requirements", async (
+        IClusterRequirementsValidator requirements,
+        bool? refresh,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await requirements.ValidateAsync(refresh == true, cancellationToken)))
     .RequireAuthorization(ObservabilityPolicies.Reader)
     .RequireRateLimiting(ObservabilityPolicies.RateLimit);
 app.MapPrometheusScrapingEndpoint()

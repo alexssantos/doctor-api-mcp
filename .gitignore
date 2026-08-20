@@ -51,3 +51,6 @@ x86/
 ### Dashboard client (React + Vite)
 **/dashboard/node_modules/
 src/Services/McpServer/wwwroot/
+
+# Generated cluster-lab evidence
+tests/cluster-lab/reports/

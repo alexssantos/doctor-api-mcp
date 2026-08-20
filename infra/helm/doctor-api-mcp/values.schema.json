@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "automountToken": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "clusterAccess": {
+      "type": "object",
+      "required": [
+        "scope",
+        "serviceDiscovery",
+        "stateStorage",
+        "allowVolumes",
+        "validateOnStart"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["Cluster", "Namespace", "None"]
+        },
+        "serviceDiscovery": {
+          "type": "boolean"
+        },
+        "stateStorage": {
+          "type": "string",
+          "enum": ["ConfigMap", "Memory"]
+        },
+        "allowVolumes": {
+          "type": "boolean"
+        },
+        "validateOnStart": {
+          "type": "boolean"
+        },
+        "validationCacheSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 600
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_]+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "clusterAccess": {
+            "properties": {
+              "scope": { "const": "None" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "clusterAccess": {
+            "properties": {
+              "serviceDiscovery": { "const": false },
+              "stateStorage": { "const": "Memory" }
+            }
+          },
+          "observability": {
+            "properties": {
+              "enableDeploymentEvents": { "const": false }
+            }
+          },
+          "serviceAccount": {
+            "properties": {
+              "automountToken": { "enum": [false, null] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "clusterAccess": {
+            "properties": {
+              "stateStorage": { "const": "Memory" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "replicaCount": { "maximum": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "clusterAccess": {
+            "properties": {
+              "serviceDiscovery": { "const": false }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "services": { "minProperties": 1 }
+        }
+      }
+    }
+  ]
+}
