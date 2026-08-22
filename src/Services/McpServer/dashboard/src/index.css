@@ -9,6 +9,7 @@
 
 :root {
   --radius: 0.625rem;
+  color-scheme: light;
 
   /* Layer scale — keep every fixed/floating element on one of these steps. */
   --z-base: 0;
@@ -53,6 +54,9 @@
   --border: oklch(0.91 0.01 260);
   --input: oklch(0.91 0.01 260);
   --ring: oklch(0.47 0.18 265 / 0.5);
+  --scrollbar-track: oklch(0.94 0.01 260);
+  --scrollbar-thumb: oklch(0.64 0.025 260);
+  --scrollbar-thumb-hover: oklch(0.5 0.05 260);
 
   --chart-1: oklch(0.6 0.2 265);
   --chart-2: oklch(0.7 0.15 190);
@@ -62,6 +66,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.15 0.01 260);
   --foreground: oklch(0.95 0.01 260);
 
@@ -94,6 +99,9 @@
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.72 0.15 265 / 0.5);
+  --scrollbar-track: oklch(0.18 0.012 260);
+  --scrollbar-thumb: oklch(0.42 0.025 260);
+  --scrollbar-thumb-hover: oklch(0.55 0.06 260);
 
   --chart-1: oklch(0.65 0.2 265);
   --chart-2: oklch(0.72 0.15 190);
@@ -149,6 +157,8 @@
      jumps and scrollIntoView land content underneath it. */
   html {
     scroll-padding-top: 7rem;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: thin;
   }
   body {
     @apply bg-background text-foreground antialiased;
@@ -210,13 +220,30 @@
 }
 
 @layer utilities {
+  /* One treatment for the page, tab strip and scrollable tables. Native
+     scrollbars otherwise stay light in Chromium while the dashboard is dark. */
+  .scrollbar-thin {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: thin;
+  }
+  html::-webkit-scrollbar,
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
+  html::-webkit-scrollbar-track,
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+  html::-webkit-scrollbar-thumb,
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: var(--border);
+    background: var(--scrollbar-thumb);
+    border: 2px solid var(--scrollbar-track);
     border-radius: 9999px;
+  }
+  html::-webkit-scrollbar-thumb:hover,
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
   }
 
   /* Chat demo: three dots standing in for "the MCP is composing a reply". */

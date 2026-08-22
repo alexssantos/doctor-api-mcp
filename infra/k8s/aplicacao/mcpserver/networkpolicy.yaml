@@ -52,7 +52,9 @@ spec:
         - { protocol: TCP, port: 4317 }
         - { protocol: TCP, port: 9090 }
         - { protocol: TCP, port: 16686 }
-    # The in-cluster Kubernetes API is exposed as HTTPS on service port 443.
+    # The Kubernetes Service listens on 443, but k3d/K3s enforces egress after
+    # DNAT against the API endpoint on 6443. Both ports must therefore be
+    # allowed for in-cluster API access.
     # Application-level SSRF controls still restrict all configured HTTP hosts.
     - to:
         - ipBlock:
@@ -60,3 +62,5 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+        - protocol: TCP
+          port: 6443

@@ -35,6 +35,7 @@ spec:
         - { protocol: TCP, port: 8080 }
         - { protocol: TCP, port: 3100 }
         - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 6443 }
         - { protocol: TCP, port: 9090 }
         - { protocol: TCP, port: 16686 }
 {{- end }}
